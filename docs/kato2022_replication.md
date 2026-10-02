@@ -97,7 +97,7 @@ says; that is what makes a rich lender ruin a poor borrower (see below).
 
 At a default the borrower's assets are `X = lam m_i + (1-lam)(1+d)(m_i+m_j)` and the
 lender's claim is `C = (1-lam)(1+rho) m_j > X`. Plain liquidation (the default) gives
-the lender all of `X`, which reproduces Eq 2's total exactly. Three optional knobs, all off
+the lender all of `X`, which reproduces Eq 2's total exactly. Five optional knobs, all off
 by default (`Params`, off = previous results to 4e-14):
 
 | option | mechanism | wealth |
@@ -105,9 +105,13 @@ by default (`Params`, off = previous results to 4e-14):
 | `recovery=r` | lender settles for `min(r*C, X)`; borrower keeps the rest (haircut / debt relief, cf. Q 2:280) | conserved |
 | `bankruptcy_cost=c` | fraction `c` of `X` destroyed before settlement | destroyed |
 | `exclusion_period=E` | defaulter cannot borrow for `E` steps (can still lend) | conserved |
+| `lender_exclusion_period=E` | defaulter also cannot *lend* for `E` steps | conserved |
+| `garnishment_rate=g` | **debt ledger**: lender seizes the borrower's assets as before, and the unpaid part `U` becomes a debt of the borrower to that lender. Whenever the debtor's wealth rises (profit as borrower, interest as lender, transfers received) a fraction `g` of the *gain* goes to the creditor until `U` is repaid. One open debt per borrower; a later lender of an already-indebted borrower just absorbs its loss. Holdings stay >= 0 and the Gini is on holdings, as in the paper. `g=1` is the nearest analogue of literal Eq 2, where `U` stays as negative wealth. Cannot be combined with `recovery`/`bankruptcy_cost`. | conserved (transfers only) |
 
-`Result.recovery_rate` is the realised lender receipts / claims over defaults (0.93 under
-plain liquidation). `experiments/bankruptcy_sweep.py` scores each setting against Kato's
+`Result.recovery_rate` is the realised lender receipts (at default plus later ledger
+repayments) / claims over defaults (0.93 under plain liquidation). `debt_outstanding`,
+`debt_repaid` and `idle_steps` (steps where bans left no eligible pair; bounded resampling,
+so a ban can never hang a run) are also returned. `experiments/bankruptcy_sweep.py` scores each setting against Kato's
 L curves (`results/bankruptcy_sweep/sweep.md`, 10 seeds). Gini at t=1e6, rho=0.05:
 
 | setting | L alone | L-T, tp=1e5 | defaults | note |
@@ -117,6 +121,8 @@ L curves (`results/bankruptcy_sweep/sweep.md`, 10 seeds). Gini at t=1e6, rho=0.0
 | recovery 0 (lender gets nothing) | 0.49 | 0.49 | 3.1e4 | |
 | cost 0.1 / 0.5 | 0.91 / 0.91 | 0.88 / 0.91 | 2.4e5 | total wealth -> ~0 |
 | exclusion 1e3 / 1e4 | 0.95 / 0.98 | 0.93 / 0.97 | 1.9e5 / 6.8e4 | |
+| lender exclusion 1e3 / 1e4 | 0.94 / 0.94 | 0.92 / 0.94 | 3.0e5 / 5.5e5 | more defaults |
+| ledger g = 0.1 / 0.5 / 1 | 0.94 / 0.96 / 0.97 | 0.93 / 0.95 / 0.96 | 2.4e5 / 2.4e5 / 1.4e5 | open debt 0.8-1.1 per agent |
 
 What this shows:
 
@@ -135,8 +141,25 @@ What this shows:
 - **Exclusion** lowers defaults and pushes the late-time Gini up towards Kato's
   rho=0 curve (0.55 -> 0.69 at E=1e4; L alone 0.98 matches) but overshoots L-T (0.97 vs 0.84).
 
-Not built yet: defaulters excluded from *lending* too, and a lender-side recovery that
-depends on the borrower's future income (a debt ledger).
+- **Lender exclusion barely moves inequality** (L alone 0.94 whatever E) but raises defaults
+  (2.4e5 -> 5.5e5 at E=1e4): taking defaulters out of the lender pool leaves richer
+  lenders whose claims are larger relative to the borrowers they meet.
+- **The ledger recovers little because defaulters have no income.** A defaulter is reset to
+  ~0 and mostly meets rich lenders, so it rarely gains; open debt stays at about one unit per
+  agent, comparable to all wealth in the system (0.85 per agent). Of the debt created
+  (`outstanding + repaid`), about 40% (g=0.1) to 66% (g=1) had been repaid by t=1e6.
+  With a transfer scheme the debtor's received transfers are partly passed on to creditors, so
+  the ledger works against T. Effect on Gini is small but pushes towards Kato: L alone
+  0.94 -> 0.97 and rho=0 0.55 -> 0.61 (Kato 0.98 / 0.95), while L-T moves 0.92 -> 0.96
+  (Kato 0.84). Max deviation over the digitised L points falls (0.40 -> 0.34, the best of
+  any setting) but the mean rises (0.056 -> 0.075) because L-T gets worse. Defaults fall to
+  1.4e5 at g=1; I have not explained that.
+- **Net:** none of the five options improves the overall fit to Kato (best mean deviation:
+  bankruptcy cost 0.1-0.25, 0.048 vs 0.056, within noise). They are policy levers for the
+  Islamic-finance extensions, not repairs to the replication.
+
+Still not built: a *lender* ledger (creditors who go bust in turn), multiple open debts per
+borrower, and debt expiry/forgiveness after a time.
 
 ## Corrections to the literature dossier (`overview.md`, which is a PDF despite the extension)
 
@@ -151,6 +174,6 @@ depends on the borrower's future income (a debt ledger).
 
 ## Suggested next steps
 
-1. Bankruptcy options are in (see above); a debt ledger and lender exclusion are the open
-   extensions.
+1. Bankruptcy options are in (see above); multi-creditor ledgers and debt forgiveness are the
+   open extensions.
 2. Then move to the dossier's Phase 1b: the zakat-rate sweep with a WAA term.

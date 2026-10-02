@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from islamic_econophysics.kato2022 import (
-    Params, gini, simulate, _transfer_Q, _transfer_T)
+    Params, gini, simulate, _garnish_all, _transfer_Q, _transfer_T)
 
 SEEDS = range(6)
 
@@ -130,6 +130,53 @@ def test_bankruptcy_options_rejected_outside_bankrupt_L():
         Params(model="L", insolvency="skip", bankruptcy_cost=0.1)
     with pytest.raises(ValueError):
         Params(model="L", recovery=1.5)
+
+
+def test_garnish_all_pays_creditor_from_gains_only():
+    before = np.array([1.0, 1.0, 1.0, 1.0])
+    m = np.array([3.0, 0.5, 1.0, 2.0])        # gains: +2, loss, none, +1
+    debt = np.array([10.0, 10.0, 10.0, 0.5])  # agent 3 owes only 0.5
+    cred = np.array([1, 2, 3, 0])
+    repaid = _garnish_all(m, before, debt, cred, 0.5)
+    assert repaid == pytest.approx(1.0 + 0.5)           # 0.5*2 and min(0.5*1, 0.5)
+    assert m.sum() == pytest.approx(6.5)                 # pure transfer
+    assert debt.tolist() == [9.0, 10.0, 10.0, 0.0]
+    # agent 0 pays 1 to agent 1 and receives 0.5 from agent 3
+    assert m.tolist() == [2.5, 1.5, 1.0, 1.5]
+
+
+def test_ledger_conserves_wealth_and_repays_from_transfers():
+    # dw=0 conserves wealth exactly; T transfers are the only income a defaulter has.
+    r = simulate(Params(model="L", delta_width=0.0, interest=0.3, garnishment_rate=1.0,
+                        redistribution="T", transfer_period=1000, samples=(2 * 10**4,)), seed=1)
+    assert r.total_wealth[0] == pytest.approx(1000.0, rel=1e-9)
+    assert r.debt_repaid[0] > 0 and r.debt_outstanding[0] > 0 and r.min_wealth[0] >= 0
+
+
+def test_ledger_leaves_exchange_dynamics_unchanged_until_first_default_income():
+    # No garnishment income exists before a defaulter's wealth rises, so g>0 must not
+    # change the first 1e3 steps (no defaults yet).
+    a = simulate(Params(model="L", samples=(1000,)), seed=5).wealth
+    b = simulate(Params(model="L", garnishment_rate=0.5, samples=(1000,)), seed=5).wealth
+    assert np.allclose(a, b)
+
+
+def test_lender_exclusion_changes_default_count_and_never_deadlocks():
+    base = simulate(Params(model="L", samples=(10**5,)), seed=1)
+    lex = simulate(Params(model="L", lender_exclusion_period=10**4, samples=(10**5,)), seed=1)
+    assert lex.defaults[0] != base.defaults[0]
+    # With 2 agents, once one has defaulted and is banned from lending, every step in
+    # which the other borrows has no eligible lender: bounded resampling -> idle step.
+    tiny = simulate(Params(model="L", n_agents=2, interest=0.3, delta_width=0.3,
+                           lender_exclusion_period=10**6, samples=(5000,)), seed=0)
+    assert tiny.defaults[0] > 0 and tiny.idle_steps[0] > 0
+
+
+def test_ledger_rejects_combination_with_recovery():
+    with pytest.raises(ValueError):
+        Params(model="L", garnishment_rate=0.5, recovery=0.5)
+    with pytest.raises(ValueError):
+        Params(model="J", lender_exclusion_period=10)
 
 
 # ---- Kato's results (Section "Results") ---------------------------------
