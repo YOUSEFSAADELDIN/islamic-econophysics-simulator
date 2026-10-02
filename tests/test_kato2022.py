@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from islamic_econophysics.kato2022 import (
-    Params, gini, simulate, _garnish_all, _transfer_Q, _transfer_T)
+    Params, gini, simulate, _garnish_all, _seize_receivables, _transfer_Q, _transfer_T)
 
 SEEDS = range(6)
 
@@ -132,17 +132,43 @@ def test_bankruptcy_options_rejected_outside_bankrupt_L():
         Params(model="L", recovery=1.5)
 
 
-def test_garnish_all_pays_creditor_from_gains_only():
-    before = np.array([1.0, 1.0, 1.0, 1.0])
-    m = np.array([3.0, 0.5, 1.0, 2.0])        # gains: +2, loss, none, +1
-    debt = np.array([10.0, 10.0, 10.0, 0.5])  # agent 3 owes only 0.5
-    cred = np.array([1, 2, 3, 0])
-    repaid = _garnish_all(m, before, debt, cred, 0.5)
-    assert repaid == pytest.approx(1.0 + 0.5)           # 0.5*2 and min(0.5*1, 0.5)
-    assert m.sum() == pytest.approx(6.5)                 # pure transfer
-    assert debt.tolist() == [9.0, 10.0, 10.0, 0.0]
-    # agent 0 pays 1 to agent 1 and receives 0.5 from agent 3
-    assert m.tolist() == [2.5, 1.5, 1.0, 1.5]
+def _ledger(n, debts, born_t=0):
+    D = np.zeros((n, n)); born = np.zeros((n, n), dtype=np.int64)
+    for (a, k), v in debts.items():
+        D[a, k] = v; born[a, k] = born_t
+    return D, born, D.sum(axis=1)
+
+
+def test_garnish_all_pays_creditors_pro_rata_from_gains_only():
+    before = np.ones(4)
+    m = np.array([3.0, 0.5, 1.0, 2.0])           # gains: +2, loss, none, +1
+    D, born, dtot = _ledger(4, {(0, 1): 3.0, (0, 2): 1.0, (1, 2): 10.0, (3, 0): 0.5})
+    repaid, forgiven = _garnish_all(m, before, 0.5, 1, 0, D, born, dtot)
+    assert (repaid, forgiven) == (pytest.approx(1.0 + 0.5), 0.0)  # 0.5*2 and min(0.5*1, 0.5)
+    assert m.sum() == pytest.approx(6.5)                          # pure transfer
+    # agent 0 pays 1.0 split 3:1 to agents 1 and 2, agent 3 pays 0.5 to agent 0
+    assert D[0, 1] == pytest.approx(3.0 - 0.75) and D[0, 2] == pytest.approx(1.0 - 0.25)
+    assert D[1, 2] == 10.0 and D[3, 0] == pytest.approx(0.0)      # agent 1 had no gain
+    assert m.tolist() == pytest.approx([3.0 - 1.0 + 0.5, 0.5 + 0.75, 1.0 + 0.25, 1.5])
+
+
+def test_expired_debt_is_forgiven_not_paid():
+    D, born, dtot = _ledger(3, {(0, 1): 2.0}, born_t=5)
+    m = np.array([2.0, 1.0, 1.0])
+    repaid, forgiven = _garnish_all(m, np.ones(3), 1.0, 100, 50, D, born, dtot)  # age 95 > 50
+    assert repaid == 0.0 and forgiven == pytest.approx(2.0)
+    assert D.sum() == 0.0 and m.tolist() == [2.0, 1.0, 1.0]
+
+
+def test_seize_receivables_pro_rata_assignment_and_setoff():
+    # defaulter 0 owes lender 1 an unpaid 3; 2 owes 0 six, 1 owes 0 two (set-off), 3 owes 0 four
+    D, born, dtot = _ledger(4, {(2, 0): 6.0, (1, 0): 2.0, (3, 0): 4.0})
+    seized, _ = _seize_receivables(0, 1, 3.0, 10, 0, D, born, dtot)
+    assert seized == pytest.approx(3.0)                  # f = 3/12 = 0.25 of every receivable
+    assert D[2, 0] == pytest.approx(4.5) and D[2, 1] == pytest.approx(1.5)   # assigned to 1
+    assert D[3, 0] == pytest.approx(3.0) and D[3, 1] == pytest.approx(1.0)
+    assert D[1, 0] == pytest.approx(1.5) and D[1, 1] == 0.0                  # set off, not self-debt
+    assert dtot[1] == pytest.approx(1.5) and dtot[2] == pytest.approx(6.0)   # 2's total unchanged
 
 
 def test_ledger_conserves_wealth_and_repays_from_transfers():
@@ -170,6 +196,44 @@ def test_lender_exclusion_changes_default_count_and_never_deadlocks():
     tiny = simulate(Params(model="L", n_agents=2, interest=0.3, delta_width=0.3,
                            lender_exclusion_period=10**6, samples=(5000,)), seed=0)
     assert tiny.defaults[0] > 0 and tiny.idle_steps[0] > 0
+
+
+def test_multi_debt_ledger_conserves_wealth_and_keeps_holdings_nonnegative():
+    kw = dict(model="L", delta_width=0.0, interest=0.3, garnishment_rate=1.0,
+              redistribution="T", transfer_period=1000, multi_debt=True,
+              seize_receivables=True, samples=(2 * 10**4,))
+    r = simulate(Params(**kw), seed=1)
+    assert r.total_wealth[0] == pytest.approx(1000.0, rel=1e-9)
+    assert r.min_wealth[0] >= 0 and r.debt_repaid[0] > 0 and r.claims_seized[0] > 0
+
+
+def test_multi_debt_owes_more_than_single_debt():
+    # Single mode drops a second default; multi mode records it, so open debt is larger.
+    one = simulate(Params(model="L", garnishment_rate=0.5, samples=(10**5,)), seed=2)
+    many = simulate(Params(model="L", garnishment_rate=0.5, multi_debt=True, samples=(10**5,)), seed=2)
+    assert many.debt_outstanding[0] > one.debt_outstanding[0]
+
+
+def test_debt_term_forgives_and_bounds_open_debt():
+    base = simulate(Params(model="L", garnishment_rate=0.5, multi_debt=True, samples=(2 * 10**5,)), seed=2)
+    short = simulate(Params(model="L", garnishment_rate=0.5, multi_debt=True, debt_term=2000,
+                            samples=(2 * 10**5,)), seed=2)
+    assert short.debt_forgiven[0] > 0 and base.debt_forgiven[0] == 0
+    assert short.debt_outstanding[0] < 0.5 * base.debt_outstanding[0]
+
+
+def test_material_defaults_are_a_subset_and_net_worth_share_is_a_share():
+    r = simulate(Params(model="L", garnishment_rate=1.0, multi_debt=True, samples=(10**5,)), seed=1)
+    assert 0 < r.material_defaults[0] < r.defaults[0]
+    assert 0 < r.neg_net_worth_share[0] <= 1
+
+
+def test_ledger_extensions_need_the_ledger():
+    for kw in (dict(multi_debt=True), dict(debt_term=10), dict(seize_receivables=True)):
+        with pytest.raises(ValueError):
+            Params(model="L", **kw)
+    with pytest.raises(ValueError):
+        Params(model="L", garnishment_rate=0.5, seize_receivables=True)  # needs multi_debt
 
 
 def test_ledger_rejects_combination_with_recovery():
