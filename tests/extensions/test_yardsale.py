@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from islamic_econophysics.yardsale import YSParams, _zakat, simulate
+from islamic_econophysics.extensions.yardsale import YSParams, _zakat, simulate
 
 
 def test_total_wealth_is_conserved_and_positive():
@@ -60,7 +60,7 @@ def test_validation():
 
 
 # ---- eight recipient categories ---------------------------------------------------
-from islamic_econophysics.yardsale import CATEGORIES, PROFILES, _zakat_eight  # noqa: E402
+from islamic_econophysics.extensions.yardsale import CATEGORIES, PROFILES, _zakat_eight  # noqa: E402
 
 
 def _state(w):
@@ -142,7 +142,7 @@ def test_poverty_before_zakat_is_at_least_poverty_after_when_the_poor_are_paid()
 
 
 # ---- toggles: only enabled categories are ever paid -----------------------------------
-from islamic_econophysics.yardsale import DEFAULT_ENABLED, STATUS  # noqa: E402
+from islamic_econophysics.extensions.yardsale import DEFAULT_ENABLED, STATUS  # noqa: E402
 
 
 def test_default_enables_only_poor_and_needy_and_pays_nothing_else():

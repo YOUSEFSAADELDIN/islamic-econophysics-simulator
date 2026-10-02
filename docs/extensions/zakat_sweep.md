@@ -1,8 +1,11 @@
 # Zakat-rate sweep: yard sale + wealth-attained advantage
 
-Code: `islamic_econophysics/yardsale.py` (engine), `experiments/zakat_sweep.py` (sweep),
-`tests/test_yardsale.py`. Results: `results/zakat/` (`part_A..D.json`, `critical_fit.json`,
-`dose_response.png`, `critical_scaling.png`). Run: `python experiments/zakat_sweep.py`
+> **EXTENSION: not part of the Kato (2022) replication.** The paper has no such model. The
+> replication status is in `docs/replication/kato2022_replication.md` and `README.md`.
+
+Code: `islamic_econophysics/extensions/yardsale.py` (engine), `experiments/extensions/zakat_sweep.py` (sweep),
+`tests/extensions/test_yardsale.py`. Results: `results/extensions/zakat/` (`part_A..D.json`, `critical_fit.json`,
+`dose_response.png`, `critical_scaling.png`). Run: `python experiments/extensions/zakat_sweep.py`
 (~35 min on 4 cores; parts are cached).
 
 **This is not a replication of Kato (2022), and Kato's paper has no zakat model to replicate.**
@@ -10,7 +13,7 @@ He models only a periodic transfer T and a quantile transfer Q. This sweep uses 
 yard-sale model and the zakat rule from the dossier (2.5% above a nisab per lunar year), so it
 cannot be checked against his figures. The L-model uncertainties do not affect it. What *would*
 need the author is how his T and Q (and his time step) correspond to zakat; see
-`docs/email_to_kato.md`, questions 8-10.
+`docs/replication/email_to_kato.md`, questions 8-10.
 
 ## Model
 

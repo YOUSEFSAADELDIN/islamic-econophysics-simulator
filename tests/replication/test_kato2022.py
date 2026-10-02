@@ -1,7 +1,7 @@
 """Checks of the Kato (2022) engine: invariants, then the paper's headline results.
 
 Statistical tests use a handful of seeds and generous bands; the full
-comparison against the figures lives in experiments/replicate_kato2022.py.
+comparison against the figures lives in experiments/replication/replicate_kato2022.py.
 """
 
 import numpy as np
@@ -401,3 +401,14 @@ def test_R_T_is_almost_R():
     r = g_at(10**5, model="R")
     rt = g_at(10**5, model="R", redistribution="T", transfer_period=10**4)
     assert rt == pytest.approx(r, abs=0.03)
+
+
+def test_extension_options_are_flagged_and_off_by_default():
+    from islamic_econophysics.kato2022 import EXTENSION_PARAMS
+    assert not Params(model="L").uses_extensions
+    for k in EXTENSION_PARAMS:
+        assert hasattr(Params(model="L"), k)
+    assert Params(model="L", recovery=0.5).uses_extensions
+    assert Params(model="L", garnishment_rate=0.5, multi_debt=True).uses_extensions
+    # insolvency rules are replication hypotheses, not extensions
+    assert not Params(model="L", insolvency="swap").uses_extensions

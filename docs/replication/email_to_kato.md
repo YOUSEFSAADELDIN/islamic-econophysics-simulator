@@ -68,7 +68,7 @@ that fits all of Figs 3-7 for L together.
 
 Everything is public (or I can attach it): the equations as implemented, the digitised
 figure values, a scored comparison against each figure, and the L-model rule search:
-[repo link]. I am glad to share the full write-up (`docs/kato2022_replication.md`).
+[repo link]. I am glad to share the full write-up (`docs/replication/kato2022_replication.md`).
 
 With thanks for the paper and for any help,
 

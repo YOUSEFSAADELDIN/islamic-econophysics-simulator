@@ -1,9 +1,12 @@
 # Zakat pooled over the eight recipient categories (Q 9:60)
 
-Code: `islamic_econophysics/yardsale.py` (`recipients="eight"`, `CATEGORIES`, `PROFILES`),
-`experiments/zakat_categories.py`, `tests/test_yardsale.py`. Results: `results/zakat_categories/`
+> **EXTENSION: not part of the Kato (2022) replication.** The paper has no such model. The
+> replication status is in `docs/replication/kato2022_replication.md` and `README.md`.
+
+Code: `islamic_econophysics/extensions/yardsale.py` (`recipients="eight"`, `CATEGORIES`, `PROFILES`),
+`experiments/extensions/zakat_categories.py`, `tests/extensions/test_yardsale.py`. Results: `results/extensions/zakat_categories/`
 (`tables.md`, `part_A..E.json`, `league_table.png`, `poverty_vs_rate.png`).
-Run: `python experiments/zakat_categories.py` (~10 min, 4 cores).
+Run: `python experiments/extensions/zakat_categories.py` (~10 min, 4 cores).
 
 ## What this is, and what it is not
 
@@ -65,7 +68,7 @@ public). How the schools actually weight the categories (the dossier notes the c
 fixes the eight recipients and leaves proportions to the jurists) should be taken from
 al-Mughni and al-Qaradawi's *Fiqh al-Zakah* before any of these labels are used in the app.
 
-## Results (z = 2.5%, nisab 0.5; `results/zakat_categories/tables.md`)
+## Results (z = 2.5%, nisab 0.5; `results/extensions/zakat_categories/tables.md`)
 
 The tables below are **what-if studies with all eight switched on** (parts A-E) unless stated;
 the default, literal configuration is the `poor_only` row (equal to part F's first row).

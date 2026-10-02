@@ -1,6 +1,6 @@
 """Zakat paid into a pool and split over the eight Qur'anic categories (Q 9:60).
 
-    python experiments/zakat_categories.py [--parts A,B,C,D,E,F] [--seeds 6]
+    python experiments/extensions/zakat_categories.py [--parts A,B,C,D,E,F] [--seeds 6]
 
 Base economy: N=2000, beta=0.1, waa=0.1, 20 trades per agent-year, 6000 lunar years,
 zakat 2.5% on wealth above a nisab of 0.5 x mean, poverty line 0.2 x mean wealth.
@@ -9,7 +9,7 @@ zakat 2.5% on wealth above a nisab of 0.5 x mean, poverty line 0.2 x mean wealth
   C  zakat rate vs poverty headcount for four profiles (rate needed to cut poverty)
   D  does splitting the pool change the critical rate (tail exponent = 1)?
   E  nisab sensitivity
-Each part is cached in results/zakat_categories/part_X.json.
+Each part is cached in results/extensions/zakat_categories/part_X.json.
 """
 
 import argparse
@@ -20,8 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from islamic_econophysics.yardsale import CATEGORIES, PROFILES, STATUS, YSParams, simulate  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from islamic_econophysics.extensions.yardsale import CATEGORIES, PROFILES, STATUS, YSParams, simulate  # noqa: E402
 from zakat_sweep import hill_alpha, critical_rate  # noqa: E402
 
 BASE = dict(n_agents=2000, beta=0.1, waa=0.1, trades_per_agent_year=20.0, years=6000, n_samples=40,
@@ -180,7 +180,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--parts", default="A,B,C,D,E,F")
     ap.add_argument("--seeds", type=int, default=6)
-    ap.add_argument("--out", default="results/zakat_categories")
+    ap.add_argument("--out", default="results/extensions/zakat_categories")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

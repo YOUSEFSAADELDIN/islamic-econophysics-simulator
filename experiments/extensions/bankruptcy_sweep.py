@@ -1,6 +1,6 @@
 """Sweep the L-model bankruptcy options and score each against Kato's L figures.
 
-    python experiments/bankruptcy_sweep.py [--seeds 10]
+    python experiments/extensions/bankruptcy_sweep.py [--seeds 10]
 
 For every setting: Gini of L alone, of L-T (xi=0.5), defaults, total wealth and the
 realised recovery rate, plus the mean/max abs deviation from the digitised Kato L
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from islamic_econophysics import kato2022_reference as ref  # noqa: E402
 from islamic_econophysics.kato2022 import Params, simulate  # noqa: E402
 
@@ -102,7 +102,7 @@ def evaluate(pool, opts, seeds):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=N_SEEDS)
-    ap.add_argument("--out", default="results/bankruptcy_sweep")
+    ap.add_argument("--out", default="results/extensions/l_bankruptcy")
     ap.add_argument("--force", action="store_true", help="recompute settings already in sweep.json")
     a = ap.parse_args()
     Path(a.out).mkdir(parents=True, exist_ok=True)

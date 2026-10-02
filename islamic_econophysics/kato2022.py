@@ -7,6 +7,13 @@ Equation numbers below refer to the paper. Everything the paper leaves
 unspecified is exposed as an explicit option (see `Params`) rather than being
 decided silently; docs/kato2022_replication.md lists each one.
 
+SCOPE. Everything needed to reproduce the paper is here: R, L, J (Eqs 1-3), T and Q (Eqs 4-6), the
+Gini (Eq 7) and, for the L model only, the `insolvency` rule, which is NOT specified in the paper
+(each rule is a hypothesis about what Kato's code did; none is confirmed, see
+docs/replication/kato2022_replication.md). The bankruptcy / debt-ledger options in `Params`
+(EXTENSION_PARAMS) go BEYOND the paper: they are off by default, share this engine, and are
+documented in docs/extensions/l_bankruptcy.md. The replication script runs with them off.
+
 Exchange models (one random pair per time step):
     R  Eq (1)  Chatterjee et al. random exchange with savings rate lambda
     L  Eq (2)  loan interest: borrower i pays interest and bears all profit/loss
@@ -30,6 +37,15 @@ _MODEL_CODES = {"R": MODEL_R, "L": MODEL_L, "J": MODEL_J}
 _REDIST_CODES = {None: REDIST_NONE, "T": REDIST_T, "Q": REDIST_Q}
 _INSOLV_CODES = {"none": 0, "floor": 1, "skip": 2, "cap": 3, "bankrupt": 4, "swap": 5, "redraw": 6}
 _ORDER_CODES = {"pro_rata": 0, "fifo": 1, "lifo": 2}
+
+
+# Options that go beyond Kato (2022); at their defaults the model is the paper's.
+EXTENSION_DEFAULTS = {
+    "recovery": 1.0, "bankruptcy_cost": 0.0, "exclusion_period": 0, "lender_exclusion_period": 0,
+    "garnishment_rate": 0.0, "multi_debt": False, "seize_receivables": False, "debt_term": 0,
+    "repayment_order": "pro_rata", "debt_interest": 0.0, "receipts_are_income": False,
+}
+EXTENSION_PARAMS = tuple(EXTENSION_DEFAULTS)
 
 
 @dataclass(frozen=True)
@@ -107,6 +123,11 @@ class Params:
     #   "none"  Eq (2) literally: diverges to wealth ~ -1e18 once rho > 0
     insolvency: str = "bankrupt"
     samples: tuple[int, ...] = field(default_factory=tuple)  # times to record
+
+    @property
+    def uses_extensions(self) -> bool:
+        """True if any option that goes beyond the paper (EXTENSION_PARAMS) is switched on."""
+        return any(getattr(self, k) != v for k, v in EXTENSION_DEFAULTS.items())
 
     def __post_init__(self):
         if self.model not in _MODEL_CODES:

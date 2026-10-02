@@ -1,6 +1,6 @@
 """Reproduce Figs 3-7 of Kato (2022) and compare with the digitised figures.
 
-    python experiments/replicate_kato2022.py [--seeds 20] [--outdir results/kato2022]
+    python experiments/replication/replicate_kato2022.py [--seeds 20] [--outdir results/replication/kato2022]
 
 Writes results.json, comparison.md and fig3..fig7 PNGs. Each Gini value is the
 mean over `--seeds` independent runs (the paper shows a single run, which is
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from islamic_econophysics import kato2022_reference as ref  # noqa: E402
 from islamic_econophysics.kato2022 import Params, simulate  # noqa: E402
 
@@ -34,9 +34,16 @@ EXCHANGE = {
 SHORT = {"R": "R", "L": "L rho=0.05", "J0.2": "J dw=0.2", "J0.1": "J dw=0.1"}
 
 
+def _paper_only(kw):
+    """The replication runs with every beyond-the-paper option off (see kato2022.EXTENSION_PARAMS)."""
+    p = Params(**kw)
+    assert not p.uses_extensions, "replication must run with all extension options off"
+    return p
+
+
 def _one(args):
     kw, seed = args
-    r = simulate(Params(**kw), seed=seed)
+    r = simulate(_paper_only(kw), seed=seed)
     return r.gini, r.total_wealth
 
 
@@ -49,7 +56,7 @@ def ensemble(pool, kw, seeds):
 
 def _first_bin(args):
     kw, seed = args
-    w = simulate(Params(**kw), seed=seed).wealth[0]
+    w = simulate(_paper_only(kw), seed=seed).wealth[0]
     return int((w < 0.1).sum())
 
 
@@ -70,7 +77,7 @@ def compare(name, sim, target, tol=ref.TOL, sd=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=20)
-    ap.add_argument("--outdir", default="results/kato2022")
+    ap.add_argument("--outdir", default="results/replication/kato2022")
     ap.add_argument("--insolvency", default="bankrupt",
                     help="L-model rule for a borrower who would go below 0 (see Params)")
     a = ap.parse_args()

@@ -12,8 +12,8 @@ pytest.importorskip("PIL")
 if shutil.which("pdfimages") is None:
     pytest.skip("pdfimages (poppler) not installed", allow_module_level=True)
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "experiments"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "experiments" / "replication"))
 import digitize_kato_figures as dg  # noqa: E402
 from islamic_econophysics import kato2022_reference as ref  # noqa: E402
 

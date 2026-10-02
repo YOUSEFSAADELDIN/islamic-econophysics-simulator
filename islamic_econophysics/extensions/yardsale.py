@@ -33,7 +33,7 @@ from dataclasses import dataclass
 import numpy as np
 from numba import njit
 
-from .kato2022 import gini
+from ..kato2022 import gini
 
 RECIPIENTS = {"all": 0, "poor": 1, "eight": 2}
 

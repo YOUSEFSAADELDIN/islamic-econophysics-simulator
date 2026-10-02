@@ -1,8 +1,8 @@
 """Zakat-rate sweep on the yard-sale model with wealth-attained advantage (WAA).
 
-    python experiments/zakat_sweep.py [--parts A,B,C,D] [--seeds 6] [--out results/zakat]
+    python experiments/extensions/zakat_sweep.py [--parts A,B,C,D] [--seeds 6] [--out results/extensions/zakat]
 
-Parts (each cached in results/zakat/part_X.json; delete to recompute):
+Parts (each cached in results/extensions/zakat/part_X.json; delete to recompute):
   A  dose-response: waa x zakat rate -> Gini, top shares, Pareto tail exponent, critical rate
   B  how the critical rate scales with trades per agent-year and with the stake beta
   C  nisab and recipients (all vs poor) at a fixed waa and the 2.5% rate
@@ -22,8 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from islamic_econophysics.yardsale import YSParams, simulate  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from islamic_econophysics.extensions.yardsale import YSParams, simulate  # noqa: E402
 
 YEARS = 6000
 Z_GRID = [0.0005, 0.001, 0.0015, 0.0025, 0.004, 0.006, 0.01, 0.015, 0.025, 0.04, 0.07, 0.1]
@@ -162,7 +162,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--parts", default="A,B,C,D")
     ap.add_argument("--seeds", type=int, default=6)
-    ap.add_argument("--out", default="results/zakat")
+    ap.add_argument("--out", default="results/extensions/zakat")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

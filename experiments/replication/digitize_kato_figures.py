@@ -5,7 +5,7 @@ calibrates the y axis (and x axis for Figs 6-7) against the labelled major ticks
 the coloured marker discs, and prints / saves their data coordinates. It replaces reading
 values off a 110 dpi render by eye.
 
-    python experiments/digitize_kato_figures.py [--pdf journal.pone.0275113.pdf]
+    python experiments/replication/digitize_kato_figures.py [--pdf journal.pone.0275113.pdf]
 """
 
 import argparse
@@ -166,7 +166,7 @@ def digitise(pdf):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", default="journal.pone.0275113.pdf")
-    ap.add_argument("--out", default="results/kato2022/digitised_figures.json")
+    ap.add_argument("--out", default="results/replication/kato2022/digitised_figures.json")
     a = ap.parse_args()
     res = digitise(a.pdf)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
