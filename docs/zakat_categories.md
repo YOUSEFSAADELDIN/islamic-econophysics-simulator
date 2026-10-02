@@ -59,11 +59,11 @@ tops everyone up scores 0 by construction (my first headline did exactly that an
   grants) to 19% (poor and needy only) to 16% (all to the poor). Splitting it equally over the
   eight categories (28%) leaves poverty about 1.5x the poor-only value; only about a third of
   the pool reaches the poorest fifth.
-- **Random-recipient categories can make inequality worse than no targeting.** Paying the whole
+- **Random-recipient categories can leave inequality worse than equal grants.** Paying the whole
   pool to a handful of random agents (*amilin* as wages, or the wayfarer) gives Gini 0.75-0.80
-  and poverty 53-62%: a lottery on a skewed distribution creates new winners without lifting
+  and poverty 53-62% (equal grants: 0.66 and 36%): a lottery on a skewed distribution creates new winners without lifting
   the bottom. (A realistic *amilin* share is capped, below.)
-- **Administrative overhead costs the poor about 3-4 points of poverty per eighth** diverted
+- **Administrative overhead costs the poor about 3.5-4.5 points of poverty per eighth** diverted
   (amilin weight 0 / 1/8 / 1/4 / 0.4: poverty 18.9 / 22.5 / 27.0 / 33.3%; pool reaching the
   poorest 20%: 52 / 43 / 34 / 28%). This treats wages as transfers to random agents, so it is a
   *lower* bound on the harm of real overhead, which is partly lost rather than re-spent.
