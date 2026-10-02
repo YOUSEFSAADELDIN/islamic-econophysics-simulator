@@ -139,3 +139,47 @@ def test_poverty_before_zakat_is_at_least_poverty_after_when_the_poor_are_paid()
                           recipients="eight", category_weights=PROFILES["poor_only"]), seed=1)
     assert r.steady("poverty_pre") >= r.steady("poverty") - 1e-12
     assert r.steady("poverty_pre") > 0.0
+
+
+# ---- toggles: only enabled categories are ever paid -----------------------------------
+from islamic_econophysics.yardsale import DEFAULT_ENABLED, STATUS  # noqa: E402
+
+
+def test_default_enables_only_poor_and_needy_and_pays_nothing_else():
+    assert DEFAULT_ENABLED == ("fuqara", "masakin")
+    r = simulate(YSParams(n_agents=300, years=600, n_samples=5, waa=0.1, zakat_rate=0.05, nisab=0.5,
+                          recipients="eight"), seed=1)
+    st = r.stats()
+    for c in CATEGORIES:
+        if c not in DEFAULT_ENABLED:
+            assert st[f"share_{c}"] == 0.0, c          # slaves, travellers etc. never receive anything
+    assert st["share_fuqara"] + st["share_masakin"] + st["share_unspent_returned"] == pytest.approx(1.0)
+
+
+def test_enabling_a_category_pays_it_and_disabled_weights_are_renormalised():
+    p = YSParams(recipients="eight", nisab=0.5, enabled_categories=("fuqara", "riqab"),
+                 category_weights=(1, 1, 5, 5, 3, 5, 5, 5))
+    assert p.effective_weights().tolist() == [1, 0, 0, 0, 3, 0, 0, 0]
+    # (with the poor also paid, nobody stays below the line for 5 years, so riqab alone has recipients)
+    r = simulate(YSParams(n_agents=300, years=800, n_samples=5, waa=0.1, zakat_rate=0.05, nisab=0.5,
+                          recipients="eight", enabled_categories=("riqab",)), seed=1)
+    assert r.stats()["share_riqab"] > 0 and r.stats()["share_gharimin"] == 0.0
+    r2 = simulate(YSParams(n_agents=300, years=800, n_samples=5, waa=0.1, zakat_rate=0.05, nisab=0.5,
+                           recipients="eight", enabled_categories=("fuqara", "riqab")), seed=1)
+    assert r2.stats()["share_riqab"] == 0.0 and r2.stats()["share_fuqara"] > 0
+
+
+def test_all_enabled_with_explicit_profile_equals_default_poor_and_needy():
+    base = dict(n_agents=300, years=400, n_samples=5, waa=0.1, zakat_rate=0.05, nisab=0.5, recipients="eight")
+    a = simulate(YSParams(**base), seed=3)
+    b = simulate(YSParams(**base, enabled_categories=CATEGORIES, category_weights=PROFILES["poor_only"]), seed=3)
+    assert np.array_equal(a.wealth, b.wealth)
+
+
+def test_every_category_has_a_stated_status_and_unknown_names_are_rejected():
+    assert set(STATUS) == set(CATEGORIES)
+    with pytest.raises(ValueError):
+        YSParams(recipients="eight", nisab=0.5, enabled_categories=("fuqara", "slaves"))
+    with pytest.raises(ValueError):
+        YSParams(recipients="eight", nisab=0.5, enabled_categories=("sabilillah",),
+                 category_weights=(1, 1, 1, 1, 1, 1, 0, 1))

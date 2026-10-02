@@ -5,8 +5,12 @@ Code: `islamic_econophysics/yardsale.py` (engine), `experiments/zakat_sweep.py` 
 `dose_response.png`, `critical_scaling.png`). Run: `python experiments/zakat_sweep.py`
 (~35 min on 4 cores; parts are cached).
 
-**This is independent of Kato (2022).** It uses Boghosian's yard-sale model, not the L model,
-so none of the open questions about the L model apply, and nothing here needs the author.
+**This is not a replication of Kato (2022), and Kato's paper has no zakat model to replicate.**
+He models only a periodic transfer T and a quantile transfer Q. This sweep uses Boghosian's
+yard-sale model and the zakat rule from the dossier (2.5% above a nisab per lunar year), so it
+cannot be checked against his figures. The L-model uncertainties do not affect it. What *would*
+need the author is how his T and Q (and his time step) correspond to zakat; see
+`docs/email_to_kato.md`, questions 8-10.
 
 ## Model
 

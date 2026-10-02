@@ -1,6 +1,6 @@
 """Zakat paid into a pool and split over the eight Qur'anic categories (Q 9:60).
 
-    python experiments/zakat_categories.py [--parts A,B,C,D,E] [--seeds 6]
+    python experiments/zakat_categories.py [--parts A,B,C,D,E,F] [--seeds 6]
 
 Base economy: N=2000, beta=0.1, waa=0.1, 20 trades per agent-year, 6000 lunar years,
 zakat 2.5% on wealth above a nisab of 0.5 x mean, poverty line 0.2 x mean wealth.
@@ -21,11 +21,12 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from islamic_econophysics.yardsale import CATEGORIES, PROFILES, YSParams, simulate  # noqa: E402
+from islamic_econophysics.yardsale import CATEGORIES, PROFILES, STATUS, YSParams, simulate  # noqa: E402
 from zakat_sweep import hill_alpha, critical_rate  # noqa: E402
 
 BASE = dict(n_agents=2000, beta=0.1, waa=0.1, trades_per_agent_year=20.0, years=6000, n_samples=40,
-            zakat_rate=0.025, nisab=0.5, poverty_line=0.2, recipients="eight")
+            zakat_rate=0.025, nisab=0.5, poverty_line=0.2, recipients="eight",
+            enabled_categories=CATEGORIES)   # parts A-E are what-if studies with ALL eight switched on
 METRICS = ("gini", "poverty", "poverty_pre", "bottom50", "top10pct")
 
 
@@ -98,6 +99,16 @@ def part_e(pool, seeds):
     return res
 
 
+def part_f(pool, seeds):
+    """Toggles: the default (poor + needy, equal split) and then each optional category switched on
+    alone, taking an equal share with the two that always apply."""
+    res = {"default: fuqara+masakin": cfg(pool, dict(enabled_categories=("fuqara", "masakin"), category_weights=None), seeds)}
+    for c in CATEGORIES[2:]:
+        res[f"+{c}"] = cfg(pool, dict(enabled_categories=("fuqara", "masakin", c), category_weights=None), seeds)
+        print("  F", c, round(res[f"+{c}"]["poverty_pre"][0], 3), flush=True)
+    return res
+
+
 def write_tables(out, R):
     L = []
     if "A" in R:
@@ -133,6 +144,11 @@ def write_tables(out, R):
               "| setting | Gini | poverty before zakat | bottom-50% share |", "|---|---|---|---|"]
         for k, v in R["E"].items():
             L.append(f"| {k} | {v['gini'][0]:.2f} | {v['poverty_pre'][0]:.3f} | {v['bottom50'][0]:.3f} |")
+    if "F" in R:
+        L += ["", "## F. Toggles: default (poor + needy) and each optional category switched on, equal shares\n",
+              "| enabled | Gini | poverty before zakat | bottom-50% share | pool reaching poorest 20% |", "|---|---|---|---|---|"]
+        for k, v in R["F"].items():
+            L.append(f"| {k} | {v['gini'][0]:.2f} | {v['poverty_pre'][0]:.3f} | {v['bottom50'][0]:.3f} | {v['to_poorest20'][0]:.2f} |")
     (out / "tables.md").write_text("\n".join(L) + "\n")
 
 
@@ -162,13 +178,13 @@ def figures(out, R):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--parts", default="A,B,C,D,E")
+    ap.add_argument("--parts", default="A,B,C,D,E,F")
     ap.add_argument("--seeds", type=int, default=6)
     ap.add_argument("--out", default="results/zakat_categories")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    R, fn = {}, dict(A=part_a, B=part_b, C=part_c, D=part_d, E=part_e)
+    R, fn = {}, dict(A=part_a, B=part_b, C=part_c, D=part_d, E=part_e, F=part_f)
     with Pool() as pool:
         for part in a.parts.split(","):
             f = out / f"part_{part}.json"

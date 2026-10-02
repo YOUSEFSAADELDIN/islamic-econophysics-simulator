@@ -51,7 +51,18 @@ that fits all of Figs 3-7 for L together.
    quantile), and is "1/1 quantile equals the R, L and T models" meant to read "R, L and J"?
 7. *Small inconsistencies.* The inset of Fig 4 says λ = 0.5 (your curves and caption fit
    0.25); the caption of Fig 3 says t = 10^3, 10^4, 10^5 but the panels are labelled 10^6.
-8. *Code.* Would you be willing to share the simulation code (Mathematica?) or the random seeds
+8. *Zakat.* Your abstract names waqf, sadaqah and zakat as the Islamic redistribution, but the
+   models are T (which you equate with inheritance tax and waqf) and Q. Do you regard T/Q as
+   representing zakat (2.5% per lunar year of wealth above a nisab, paid to the poor, the
+   needy and the other classes of Qur'an 9:60), or was zakat deliberately left outside the
+   model? Is there a zakat-specific model, or are there data you would use for it?
+9. *Time unit.* What does one time step stand for? You equate t = 10^4-10^5 with a millennium
+   ("12 months x 365 days x 1000 years"), which suggests a step is roughly a month or a day.
+   With that mapping, which (xi, tp) would you use for an annual 2.5% levy?
+10. *Recipients.* Is Q (transfer to agents below m_MAX/q) meant as "the poor" only, and do you
+    have a view on how the other recipient classes would enter such a model (for example
+    administrators, debtors or public spending)?
+11. *Code.* Would you be willing to share the simulation code (Mathematica?) or the random seeds
    for a few runs? Even a single L-model run with the intermediate wealth vector at t = 10^6
    would settle it.
 

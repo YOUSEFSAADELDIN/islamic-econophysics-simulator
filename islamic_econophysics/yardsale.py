@@ -13,9 +13,13 @@ Zakat (every `trades_per_agent_year * N / 2` trades = one lunar year):
     every agent with w >= nisab * mean(w) pays zakat_rate * w
     the pool goes to all agents equally ("all") or to the agents below the nisab ("poor").
 
-Recipients "eight": the pool is split between the eight Qur'anic categories (Q 9:60) by
-`category_weights`. A yard-sale economy has no slaves, travellers or loan book, so categories
-4-8 are *modelling choices*, listed in CATEGORIES and docs/zakat_categories.md.
+Recipients "eight": the pool is split between the eight Qur'anic categories (Q 9:60). Kato (2022)
+does not model zakat at all (only a transfer T and a quantile transfer Q), and a yard-sale
+economy has no slaves, captives, debts or travellers, so a category is only ever paid if it is
+*enabled*. By default only the two that have an unambiguous counterpart (the poor and the needy,
+defined by wealth) are enabled; the others are opt-in proxies (STATUS, docs/zakat_categories.md).
+Disabled categories receive nothing and their share is not paid to anyone else by default: the
+weights of the enabled categories are renormalised.
 
 The mapping from the continuous-time Fokker-Planck parameters (chi, zeta) of Boghosian et al.
 to this discrete model is *not* assumed: `waa` is the bias of the coin, and the critical zakat
@@ -46,6 +50,22 @@ CATEGORIES = (
     "ibn_sabil",   # [interpretive] stranded wayfarer: wayfarer_frac x N random agents of any wealth
 )
 
+# What each category means in this economy. "applies": defined by wealth, which the model has.
+# "no counterpart": the thing it refers to does not exist here, so it is OFF by default; the
+# listed rule is only a modern analogy that can be switched on for what-if studies.
+STATUS = {
+    "fuqara": "applies",
+    "masakin": "applies",
+    "amilin": "applies only if zakat administration is modelled as a cost (opt-in)",
+    "muallafat": "no counterpart (no social/political relations); opt-in proxy",
+    "riqab": "no counterpart (no slaves or captives); opt-in proxy is persistent-poverty release",
+    "gharimin": "no counterpart in the yard-sale economy (no debts); opt-in distress proxy. "
+                "Applies for real in the L-model debt ledger",
+    "sabilillah": "no counterpart (no public-works sector); opt-in proxy is an equal per-capita grant",
+    "ibn_sabil": "no counterpart (no travellers); opt-in random-agent proxy",
+}
+DEFAULT_ENABLED = ("fuqara", "masakin")
+
 # Stylised allocation profiles (weights over CATEGORIES). They are NOT a fiqh ruling: see the doc.
 PROFILES = {
     "all_public":      (0, 0, 0, 0, 0, 0, 1, 0),          # = the earlier recipients="all"
@@ -68,7 +88,8 @@ class YSParams:
     years: int = 1000
     n_samples: int = 100                 # equally spaced in time, last one at `years`
     # recipients="eight" only (needs nisab > 0):
-    category_weights: tuple = PROFILES["eight_equal"]
+    enabled_categories: tuple = DEFAULT_ENABLED   # names from CATEGORIES; only these are paid
+    category_weights: tuple | None = None         # None = equal over the enabled categories
     poverty_line: float = 0.2            # x mean wealth; also the poverty line of the headcount metric
     riqab_years: int = 5
     gharimin_loss: float = 0.5
@@ -87,14 +108,27 @@ class YSParams:
             raise ValueError(f"recipients must be one of {list(RECIPIENTS)}")
         if self.years < 1 or self.n_samples < 1 or self.n_agents < 3:
             raise ValueError("years, n_samples >= 1 and n_agents >= 3")
-        if len(self.category_weights) != 8 or min(self.category_weights) < 0 or sum(self.category_weights) <= 0:
-            raise ValueError("category_weights: 8 non-negative weights with a positive sum")
+        unknown = [c for c in self.enabled_categories if c not in CATEGORIES]
+        if unknown:
+            raise ValueError(f"unknown categories {unknown}; choose from {list(CATEGORIES)}")
+        if self.category_weights is not None:
+            if len(self.category_weights) != 8 or min(self.category_weights) < 0:
+                raise ValueError("category_weights: 8 non-negative weights (or None)")
+        if self.recipients == "eight" and self.effective_weights().sum() <= 0:
+            raise ValueError("no enabled category has a positive weight")
         if self.recipients == "eight" and self.nisab <= 0:
             raise ValueError("recipients='eight' needs nisab > 0 (it defines who is needy)")
         if not 0 <= self.poverty_line < max(self.nisab, 1e-12) and self.recipients == "eight":
             raise ValueError("poverty_line must lie below the nisab")
         if self.year_trades < 1:
             raise ValueError("trades_per_agent_year * n_agents / 2 must be >= 1")
+
+    def effective_weights(self) -> np.ndarray:
+        """Weights actually used: category_weights (or all ones) x enabled mask; the levy code
+        normalises them, so disabled categories get nothing and the rest are renormalised."""
+        base = np.ones(8) if self.category_weights is None else np.array(self.category_weights, float)
+        mask = np.array([c in self.enabled_categories for c in CATEGORIES], float)
+        return base * mask
 
     @property
     def year_trades(self) -> int:
@@ -368,7 +402,7 @@ class YSResult:
 
 
 def simulate(p: YSParams, seed: int = 0) -> YSResult:
-    wts = np.array(p.category_weights, dtype=np.float64)
+    wts = p.effective_weights()
     cat = np.array([p.poverty_line, p.riqab_years, p.gharimin_loss, p.collector_frac,
                     p.muallaf_frac, p.wayfarer_frac], dtype=np.float64)
     yrs, g, t1, t10, ov, w, pov, b50, rcv, pov_pre = _run(

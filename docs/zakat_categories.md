@@ -5,11 +5,41 @@ Code: `islamic_econophysics/yardsale.py` (`recipients="eight"`, `CATEGORIES`, `P
 (`tables.md`, `part_A..E.json`, `league_table.png`, `poverty_vs_rate.png`).
 Run: `python experiments/zakat_categories.py` (~10 min, 4 cores).
 
-Same independent yard-sale economy as `docs/zakat_sweep.md` (nothing here depends on Kato 2022).
-Base case: N=2000, beta=0.1, waa=0.1, 20 trades per agent-year, 6000 lunar years, 6 seeds,
-zakat 2.5% on wealth above a nisab of 0.5 x mean, poverty line 0.2 x mean.
+## What this is, and what it is not
 
-## How each category is modelled
+- **Kato (2022) does not model zakat.** His abstract and discussion name zakat, sadaqah and waqf
+  as the Islamic redistribution, but the only redistribution in his model is T (every `tp` steps
+  each agent gives `xi * m_i`, split equally among all others; he equates it with inheritance tax
+  and waqf) and Q (the same, paid only to agents below `m_max/q`). There is no 2.5%, no nisab and no
+  recipient categories in the paper, and he never mentions slaves, debtors or travellers. So
+  there is **nothing in the paper to replicate** for zakat, and none of this can be checked
+  against his figures.
+- **Where the zakat rules come from:** the dossier (2.5% on wealth held a full lunar year above the
+  nisab; the eight recipients of Q 9:60). These are facts about the rule, not results of any
+  model.
+- **What is mine:** how a rule defined for a real society is made to act in a toy economy, and the
+  yard-sale economy itself (Boghosian et al., not Kato). That is the part that needs a decision,
+  and the decisions below are exposed as switches rather than baked in.
+- **Toggles.** `YSParams.enabled_categories` lists the categories that are ever paid. **Default:
+  only the poor and the needy**, the two whose definition (wealth below a line) exists in the
+  model. A category with no counterpart is simply not paid; its weight is dropped and the others
+  renormalised, not handed to anyone else. You can switch any category on to run a what-if, but
+  the proxy then is a modern analogy, not the category itself. In particular *riqab* means
+  slaves/captives: with none in the model it does not apply, and the optional proxy
+  (release from persistent poverty) is labelled as an analogy.
+
+| category | applies in this model? | default |
+|---|---|---|
+| *fuqara* (the poor) | yes: wealth below a poverty line | on |
+| *masakin* (the needy) | yes: wealth between the poverty line and the nisab | on |
+| *amilin* (administrators) | only if collection is modelled as a cost | off |
+| *mu'allafat al-qulub* | no (no social or political relations) | off |
+| *riqab* (slaves, captives) | **no: there are none** | off |
+| *gharimin* (debtors) | not in the yard-sale economy (no debts); **would apply in the L-model debt ledger** | off |
+| *fi sabilillah* | no (no public-works sector) | off |
+| *ibn al-sabil* (wayfarer) | no (no travellers) | off |
+
+## How each category is modelled (when switched on)
 
 The levy is unchanged (2.5% of the wealth of every agent above the nisab). The pool is split by
 `category_weights`; eligibility is decided on wealth *after the levy and before any grant*
@@ -36,6 +66,9 @@ fixes the eight recipients and leaves proportions to the jurists) should be take
 al-Mughni and al-Qaradawi's *Fiqh al-Zakah* before any of these labels are used in the app.
 
 ## Results (z = 2.5%, nisab 0.5; `results/zakat_categories/tables.md`)
+
+The tables below are **what-if studies with all eight switched on** (parts A-E) unless stated;
+the default, literal configuration is the `poor_only` row (equal to part F's first row).
 
 Poverty headcount = share of agents below 0.2 x mean wealth, measured at the end of the trading
 year **before zakat arrives** (the worst point of the cycle). Measured just after, a rule that
@@ -90,11 +123,32 @@ tops everyone up scores 0 by construction (my first headline did exactly that an
   poor_only and 26.6 / 27.9 / 32.2% for eight_equal. A high nisab shrinks the payer base (and
   widens the "needy" band that must be filled from a smaller pool).
 
+## Toggles, one at a time (part F)
+
+Default (poor + needy, equal split), then each optional category added alone, taking an equal
+share with the two that always apply:
+
+| enabled | Gini | poverty before zakat | bottom-50% share | pool reaching poorest 20% |
+|---|---|---|---|---|
+| **default: fuqara + masakin** | 0.57 | 18.9% | 14.4% | 52% |
+| + amilin | 0.63 | 30.4% | 10.5% | 30% |
+| + mu'allafat | 0.59 | 24.1% | 12.7% | 38% |
+| + riqab (poverty-trap proxy) | 0.58 | 22.0% | 13.5% | 59% |
+| + gharimin (distress proxy) | 0.57 | 19.5% | 14.1% | 57% |
+| + fi sabilillah (equal grant) | 0.60 | 25.4% | 12.2% | 34% |
+| + ibn al-sabil | 0.62 | 28.4% | 11.2% | 32% |
+
+Every optional category, being a share taken away from the poor and needy, can only hold or
+worsen poverty here; the proxies that aim at the poor anyway (riqab, gharimin) cost least. This
+says nothing about whether a category *should* be paid in a society where it exists.
+
 ## Caveats
 
-- Categories 4, 5, 6 and 8 are my modelling choices (marked above); changing them changes
-  their individual rows but not the headline that targeting dominates, because they are
-  small shares of the equal split.
+- The default configuration (poor + needy) makes the fewest modelling choices: a poverty line, a
+  nisab, and who gets paid first. Everything else here is optional.
+
+- The proxies for categories 3-8 are my modelling choices; changing them changes their rows
+  but not the headline that targeting dominates.
 - Poverty is relative (a fraction of mean wealth); in a yard-sale economy with total wealth fixed
   there is no absolute poverty. Wages to *amilin* are re-spent as transfers, so overhead is
   understated.

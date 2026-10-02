@@ -54,3 +54,15 @@
 | nisab=0.5,eight_equal | 0.62 | 0.279 | 0.113 |
 | nisab=1.0,poor_only | 0.60 | 0.272 | 0.116 |
 | nisab=1.0,eight_equal | 0.63 | 0.322 | 0.098 |
+
+## F. Toggles: default (poor + needy) and each optional category switched on, equal shares
+
+| enabled | Gini | poverty before zakat | bottom-50% share | pool reaching poorest 20% |
+|---|---|---|---|---|
+| default: fuqara+masakin | 0.57 | 0.189 | 0.144 | 0.52 |
+| +amilin | 0.63 | 0.304 | 0.105 | 0.30 |
+| +muallafat | 0.59 | 0.241 | 0.127 | 0.38 |
+| +riqab | 0.58 | 0.220 | 0.135 | 0.59 |
+| +gharimin | 0.57 | 0.195 | 0.141 | 0.57 |
+| +sabilillah | 0.60 | 0.254 | 0.122 | 0.34 |
+| +ibn_sabil | 0.62 | 0.284 | 0.112 | 0.32 |
