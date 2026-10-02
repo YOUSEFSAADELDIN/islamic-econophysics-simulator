@@ -92,6 +92,46 @@ def test_default_counter_zero_without_defaults():
     assert r.defaults[0] == 0
 
 
+# ---- bankruptcy options (beyond the paper) -------------------------------
+def test_partial_recovery_conserves_wealth_and_caps_realised_recovery():
+    r = simulate(Params(model="L", delta_width=0.0, interest=0.3, recovery=0.5,
+                        samples=(2 * 10**4,)), seed=2)
+    assert r.defaults[0] > 0 and r.min_wealth[0] >= 0
+    assert r.total_wealth[0] == pytest.approx(1000.0, rel=1e-9)  # haircut moves wealth, never destroys it
+    assert r.recovery_rate[0] <= 0.5 + 1e-9
+
+
+def test_plain_liquidation_recovers_less_than_the_full_claim():
+    r = simulate(Params(model="L", samples=(10**5,)), seed=0)
+    assert 0.5 < r.recovery_rate[0] < 1.0  # lender gets the borrower's remaining assets
+
+
+def test_bankruptcy_cost_destroys_wealth():
+    r = simulate(Params(model="L", delta_width=0.0, interest=0.3, bankruptcy_cost=0.3,
+                        samples=(2 * 10**4,)), seed=2)
+    assert r.total_wealth[0] < 1000.0 * 0.99
+
+
+def test_partial_recovery_lowers_inequality_a_lot():
+    base = g_at(10**5, model="L")
+    assert g_at(10**5, model="L", recovery=0.75) < base - 0.15
+
+
+def test_exclusion_reduces_defaults():
+    free = simulate(Params(model="L", samples=(3 * 10**5,)), seed=1).defaults[0]
+    banned = simulate(Params(model="L", exclusion_period=10**4, samples=(3 * 10**5,)), seed=1).defaults[0]
+    assert banned < free
+
+
+def test_bankruptcy_options_rejected_outside_bankrupt_L():
+    with pytest.raises(ValueError):
+        Params(model="J", recovery=0.5)
+    with pytest.raises(ValueError):
+        Params(model="L", insolvency="skip", bankruptcy_cost=0.1)
+    with pytest.raises(ValueError):
+        Params(model="L", recovery=1.5)
+
+
 # ---- Kato's results (Section "Results") ---------------------------------
 def test_R_gini_is_gamma_k2_value():
     # lambda=0.25 -> Chatterjee gamma shape k = 1 + 3*lambda/(1-lambda) = 2,

@@ -93,6 +93,51 @@ says; that is what makes a rich lender ruin a poor borrower (see below).
   distribution is concentrated similarly (Gini 0.94) but I have not compared the
   histogram quantitatively.
 
+## Bankruptcy options (beyond Kato; L model, `insolvency="bankrupt"`)
+
+At a default the borrower's assets are `X = lam m_i + (1-lam)(1+d)(m_i+m_j)` and the
+lender's claim is `C = (1-lam)(1+rho) m_j > X`. Plain liquidation (the default) gives
+the lender all of `X`, which reproduces Eq 2's total exactly. Three optional knobs, all off
+by default (`Params`, off = previous results to 4e-14):
+
+| option | mechanism | wealth |
+|---|---|---|
+| `recovery=r` | lender settles for `min(r*C, X)`; borrower keeps the rest (haircut / debt relief, cf. Q 2:280) | conserved |
+| `bankruptcy_cost=c` | fraction `c` of `X` destroyed before settlement | destroyed |
+| `exclusion_period=E` | defaulter cannot borrow for `E` steps (can still lend) | conserved |
+
+`Result.recovery_rate` is the realised lender receipts / claims over defaults (0.93 under
+plain liquidation). `experiments/bankruptcy_sweep.py` scores each setting against Kato's
+L curves (`results/bankruptcy_sweep/sweep.md`, 10 seeds). Gini at t=1e6, rho=0.05:
+
+| setting | L alone | L-T, tp=1e5 | defaults | note |
+|---|---|---|---|---|
+| plain liquidation | 0.94 | 0.92 | 2.4e5 | Kato: 0.98 / 0.84 |
+| recovery 0.95 / 0.90 / 0.75 | 0.87 / 0.74 / 0.55 | 0.86 / 0.74 / 0.55 | 2.1e5 / 1.1e5 / 4.0e4 | |
+| recovery 0 (lender gets nothing) | 0.49 | 0.49 | 3.1e4 | |
+| cost 0.1 / 0.5 | 0.91 / 0.91 | 0.88 / 0.91 | 2.4e5 | total wealth -> ~0 |
+| exclusion 1e3 / 1e4 | 0.95 / 0.98 | 0.93 / 0.97 | 1.9e5 / 6.8e4 | |
+
+What this shows:
+
+- **Partial recovery is a strong equaliser, on its own.** A 10% haircut cuts the exchange-only
+  L Gini from 0.94 to 0.74, a 25% haircut to 0.55, with no redistribution at all. The
+  defaulter keeps a stake instead of being reset to 0, which is the likely reason (I did
+  not isolate it), and the lender recovers less of what it is owed. (Within this model; there is no credit-supply side, so
+  nothing here says whether lenders would lend at all under a haircut regime.)
+- **It does not rescue the Kato fit.** L-T tracks L alone for every r, so no r gives both
+  Kato's 0.98 (alone) and 0.84 (with T). The mean deviation over the 45 digitised L points
+  is 0.056 for plain liquidation and 0.20-0.26 for any r <= 0.75, i.e. worse.
+  Cost 0.1-0.25 (0.048) is within noise of baseline.
+- **Bankruptcy cost drives total wealth to ~0** by t=1e6 (there is no production in
+  these models, only mean-zero shocks, so deadweight losses accumulate). Gini is scale-free so
+  the shares are still meaningful, but read the level of wealth as meaningless there.
+- **Exclusion** lowers defaults and pushes the late-time Gini up towards Kato's
+  rho=0 curve (0.55 -> 0.69 at E=1e4; L alone 0.98 matches) but overshoots L-T (0.97 vs 0.84).
+
+Not built yet: defaulters excluded from *lending* too, and a lender-side recovery that
+depends on the borrower's future income (a debt ledger).
+
 ## Corrections to the literature dossier (`overview.md`, which is a PDF despite the extension)
 
 - It says the L and J equations "appear as images in the HTML version"; I checked the PDF
@@ -106,7 +151,6 @@ says; that is what makes a rich lender ruin a poor borrower (see below).
 
 ## Suggested next steps
 
-1. The explicit-bankruptcy L model could be made richer (partial recovery, a bankruptcy
-   cost, defaulters excluded from borrowing for a while, who may lend), since those choices
-   decide the L-T fit. They are no longer Kato's model, so they belong in the next phase.
+1. Bankruptcy options are in (see above); a debt ledger and lender exclusion are the open
+   extensions.
 2. Then move to the dossier's Phase 1b: the zakat-rate sweep with a WAA term.
