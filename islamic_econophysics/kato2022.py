@@ -28,7 +28,7 @@ REDIST_NONE, REDIST_T, REDIST_Q = 0, 1, 2
 
 _MODEL_CODES = {"R": MODEL_R, "L": MODEL_L, "J": MODEL_J}
 _REDIST_CODES = {None: REDIST_NONE, "T": REDIST_T, "Q": REDIST_Q}
-_INSOLV_CODES = {"none": 0, "floor": 1, "skip": 2, "cap": 3}
+_INSOLV_CODES = {"none": 0, "floor": 1, "skip": 2, "cap": 3, "bankrupt": 4}
 
 
 @dataclass(frozen=True)
@@ -47,10 +47,12 @@ class Params:
     # Choices the paper does not pin down:
     shared_delta: bool = True        # J: one delta for the pair (Eq 3 uses one symbol)
     # L only: what happens when Eq (2) would push the borrower below zero.
-    #   "skip"  trade rejected, both keep their wealth (default; best fit to Figs 5-7)
+    #   "bankrupt" borrower defaults: reset to 0, lender absorbs the shortfall
+    #           (default; total wealth evolves exactly as under Eq 2; Result.defaults counts events)
+    #   "skip"  trade rejected, both keep their wealth (inflates total wealth)
     #   "floor" borrower clamped at 0     "cap"  borrower pays only what it has
     #   "none"  Eq (2) literally: diverges to wealth ~ -1e18 once rho > 0
-    insolvency: str = "skip"
+    insolvency: str = "bankrupt"
     samples: tuple[int, ...] = field(default_factory=tuple)  # times to record
 
     def __post_init__(self):
@@ -120,6 +122,8 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
     totals = np.empty(n_s)
     minima = np.empty(n_s)
     snaps = np.empty((n_s, n))
+    defaults = np.empty(n_s, dtype=np.int64)
+    n_def = 0
     k = 0
     t_end = sample_times[n_s - 1]
     for t in range(1, t_end + 1):
@@ -146,8 +150,15 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
                 paid = min(due, max(before, 0.0))
                 new_i = max(before - paid, 0.0)
                 new_j = mj + paid
+            if new_i < 0.0:
+                n_def += 1
             if new_i < 0.0 and insolv == 2:
                 pass  # trade rejected, both agents keep their wealth
+            elif new_i < 0.0 and insolv == 4:
+                # Default: limited liability for the borrower, the lender
+                # writes off the negative balance against its own wealth.
+                m[i] = 0.0
+                m[j] = new_j + new_i
             else:
                 if new_i < 0.0 and insolv == 1:
                     new_i = 0.0
@@ -166,6 +177,7 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
             ginis[k] = gini(m)
             totals[k] = m.sum()
             minima[k] = m.min()
+            defaults[k] = n_def
             snaps[k, :] = m
             k += 1
         if redist != 0 and t % tp == 0:
@@ -173,7 +185,7 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
                 _transfer_T(m, xi)
             else:
                 _transfer_Q(m, xi, q)
-    return ginis, totals, minima, snaps
+    return ginis, totals, minima, snaps, defaults
 
 
 @dataclass
@@ -183,6 +195,7 @@ class Result:
     total_wealth: np.ndarray
     min_wealth: np.ndarray
     wealth: np.ndarray  # (len(times), N) snapshots
+    defaults: np.ndarray  # cumulative borrower defaults (L model; 0 if none/other)
 
 
 def simulate(p: Params, seed: int = 0) -> Result:
@@ -190,8 +203,8 @@ def simulate(p: Params, seed: int = 0) -> Result:
     times = np.array(sorted(p.samples), dtype=np.int64)
     if times.size == 0 or times[0] < 1:
         raise ValueError("Params.samples must hold at least one time >= 1")
-    g, tot, mn, snaps = _run(
+    g, tot, mn, snaps, dfl = _run(
         _MODEL_CODES[p.model], _REDIST_CODES[p.redistribution], p.n_agents,
         p.savings, p.interest, p.delta_width, p.transfer_rate,
         p.transfer_period, p.quantile, p.shared_delta, _INSOLV_CODES[p.insolvency], times, seed)
-    return Result(times, g, tot, mn, snaps)
+    return Result(times, g, tot, mn, snaps, dfl)

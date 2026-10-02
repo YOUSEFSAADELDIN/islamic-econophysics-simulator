@@ -69,6 +69,29 @@ def test_l_model_literal_equations_leave_nonnegative_orthant():
     assert safe.min_wealth[0] >= 0
 
 
+def test_bankruptcy_keeps_wealth_nonnegative_and_conserves_total():
+    # With no profit/loss noise Eq (2) conserves wealth; defaults happen anyway
+    # (rho on a rich lender's wealth can exceed a poor borrower's) and the lender
+    # absorbing them must keep the total exact.
+    r = simulate(Params(model="L", delta_width=0.0, interest=0.3,
+                        samples=(2 * 10**4,)), seed=2)
+    assert r.defaults[0] > 0
+    assert r.min_wealth[0] >= 0
+    assert r.total_wealth[0] == pytest.approx(1000.0, rel=1e-9)
+
+
+def test_bankruptcy_does_not_inflate_total_wealth():
+    # Contrast with "skip", which inflates it by ~2x by t=1e5.
+    tot = np.mean([simulate(Params(model="L", samples=(10**5,)), seed=s).total_wealth[0]
+                   for s in range(4)])
+    assert tot == pytest.approx(1000.0, rel=0.15)
+
+
+def test_default_counter_zero_without_defaults():
+    r = simulate(Params(model="J", samples=(1000,)), seed=0)
+    assert r.defaults[0] == 0
+
+
 # ---- Kato's results (Section "Results") ---------------------------------
 def test_R_gini_is_gamma_k2_value():
     # lambda=0.25 -> Chatterjee gamma shape k = 1 + 3*lambda/(1-lambda) = 2,

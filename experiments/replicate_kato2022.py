@@ -56,7 +56,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--outdir", default="results/kato2022")
+    ap.add_argument("--insolvency", default="bankrupt",
+                    help="L-model rule for a borrower who would go below 0 (see Params)")
     a = ap.parse_args()
+    for kw in EXCHANGE.values():
+        if kw["model"] == "L":
+            kw["insolvency"] = a.insolvency
     out = Path(a.outdir)
     out.mkdir(parents=True, exist_ok=True)
     res, rows = {}, []
@@ -126,9 +131,10 @@ def main():
             rows.append(compare(f"Fig7 {key}", ms, ref.FIG7[key]))
         res["fig7"] = fig7
 
-    res["meta"] = dict(seeds=a.seeds, t_final=T_FINAL, tolerance=ref.TOL)
+    res["meta"] = dict(seeds=a.seeds, t_final=T_FINAL, tolerance=ref.TOL,
+                       insolvency=a.insolvency)
     (out / "results.json").write_text(json.dumps(res))
-    write_comparison(out / "comparison.md", rows, a.seeds)
+    write_comparison(out / "comparison.md", rows, a.seeds, a.insolvency)
     make_figures(res, out)
     bad = [r["series"] for r in rows if not r["ok"]]
     print(f"{len(rows) - len(bad)}/{len(rows)} series within +/-{ref.TOL}")
@@ -140,8 +146,9 @@ def SHORT_KW(key):
     return EXCHANGE[SHORT[key]]
 
 
-def write_comparison(path, rows, seeds):
+def write_comparison(path, rows, seeds, insolvency):
     lines = [f"# Replication vs. digitised Kato (2022) figures ({seeds} seeds/point)\n",
+             f"L-model insolvency rule: `{insolvency}`.\n",
              f"Tolerance +/-{ref.TOL} on the Gini index (figure reading error + Monte-Carlo noise).\n",
              "| series | max abs dev | mean abs dev | within tol |", "|---|---|---|---|"]
     for r in rows:
