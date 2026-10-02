@@ -28,7 +28,7 @@ REDIST_NONE, REDIST_T, REDIST_Q = 0, 1, 2
 
 _MODEL_CODES = {"R": MODEL_R, "L": MODEL_L, "J": MODEL_J}
 _REDIST_CODES = {None: REDIST_NONE, "T": REDIST_T, "Q": REDIST_Q}
-_INSOLV_CODES = {"none": 0, "floor": 1, "skip": 2, "cap": 3, "bankrupt": 4}
+_INSOLV_CODES = {"none": 0, "floor": 1, "skip": 2, "cap": 3, "bankrupt": 4, "swap": 5, "redraw": 6}
 _ORDER_CODES = {"pro_rata": 0, "fifo": 1, "lifo": 2}
 
 
@@ -98,6 +98,10 @@ class Params:
     # L only: what happens when Eq (2) would push the borrower below zero.
     #   "bankrupt" borrower defaults: reset to 0, lender absorbs the shortfall
     #           (default; total wealth evolves exactly as under Eq 2; Result.defaults counts events)
+    #   "swap"  if the borrower would go negative the roles are exchanged (the other agent
+    #           borrows from it) when that is solvent, otherwise the trade is rejected
+    #   "redraw" the profit/loss delta is redrawn (up to 50 times) until the borrower is
+    #           solvent, otherwise the trade is rejected
     #   "skip"  trade rejected, both keep their wealth (inflates total wealth)
     #   "floor" borrower clamped at 0     "cap"  borrower pays only what it has
     #   "none"  Eq (2) literally: diverges to wealth ~ -1e18 once rho > 0
@@ -455,6 +459,21 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
                         n_material += 1
                 if new_i < 0.0 and insolv == 2:
                     pass  # trade rejected, both agents keep their wealth
+                elif new_i < 0.0 and insolv == 5:
+                    # exchange roles: j borrows from i, if that outcome is solvent
+                    sw_i = lam * mj + (1.0 - lam) * (mj - rho * mi + d * (mi + mj))
+                    sw_j = lam * mi + (1.0 - lam) * (1.0 + rho) * mi
+                    if sw_i >= 0.0:
+                        m[j] = sw_i
+                        m[i] = sw_j
+                elif new_i < 0.0 and insolv == 6:
+                    for _try in range(50):
+                        d2 = np.random.uniform(-dw, dw)
+                        rd_i = lam * mi + (1.0 - lam) * (mi - rho * mj + d2 * (mi + mj))
+                        if rd_i >= 0.0:
+                            m[i] = rd_i
+                            m[j] = new_j
+                            break
                 elif new_i < 0.0 and insolv == 4:
                     # Default: limited liability for the borrower, the lender
                     # writes off the negative balance against its own wealth.

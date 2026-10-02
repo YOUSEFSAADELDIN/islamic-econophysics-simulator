@@ -242,6 +242,46 @@ the model's own exchanges and transfers.
   "R, L and T" where "R, L and J" is meant. In Fig 4 the legend leader lines for
   "L: rho=0" and "J: dw=0.2" cross (checked at 300 dpi).
 
+## The search for Kato's missing L-model rule
+
+Everything except the L model reproduces within single-run noise. For L I tried, in order,
+to find a natural rule that fits *all* the digitised L targets (Fig 3 first bin, Fig 4 rho=.05
+and rho=0, Fig 5-7 L-T and L-Q). Summary of what failed and what it taught:
+
+| hypothesis | outcome |
+|---|---|
+| Eq 2 literal, Gini on raw balances | Gini > 1 or negative (wealth ~ -1e18 by t=1e6); not what is plotted |
+| Eq 2 literal, Gini on clipped / abs / positives-only / shifted / squared balances | 0.50-0.76 at t>=1e5 vs 0.98; ~500 agents in the first bin vs 885 |
+| interest on the borrower's own wealth (what I first thought Fig 1C showed) | **a misreading**: at 305 dpi Fig 1C shows -rho(1-lam) m_j, same as Eq 2 |
+| borrower = richer / poorer agent instead of random | Gini 0.07 (richer) or far too fast (poorer) |
+| floor, skip, cap, bankrupt, reflect (abs), redraw delta, swap roles | all match through t=1e5; none reaches 0.98 / 0.95 at t=1e6 (0.80-0.96 / 0.50-0.58) |
+| shock proportional to the borrower's *own* wealth (loss base 2 m_i) | fits rho=0 well (0.455, 0.70, 0.935 vs 0.493, 0.756, 0.951) but with interest runs too fast (0.90 at 1e5 vs 0.78) or too slow, and L-T lands at 0.96 |
+| mixtures of the two interest bases x two loss bases (25 combinations) | best worst-case deviation 0.116 |
+
+What it taught:
+
+- **Eq 2 is right** at least up to the point where balances would turn negative: the literal
+  rho=0 run tracks Kato's curve to t=1e5 (0.27, 0.51 vs 0.276, 0.493).
+- **Kato's late rho=0 growth looks multiplicative, not additive.** A log-normal spread with
+  sigma^2 ~ 7.5 gives Gini 0.948 at t=1e6 (Kato 0.951). In Eq 2 a poor borrower facing a rich
+  lender takes a shock proportional to the *lender's* wealth, which any non-negativity rule
+  turns into mean reversion at zero, capping the Gini near 0.55. A shock proportional to the
+  borrower's own wealth reproduces the rho=0 curve but not the rest.
+- **The best partial fits** (`skip`, `redraw`, `swap`, all selectable with `--insolvency`)
+  pin L-T at tp=1e5 to within ~0.02 (swap 0.77/0.82/0.82 vs 0.772/0.838/0.842) but not the
+  other L figures. Excluding the no-transfer endpoints, no rule gets Fig 6/7 L within noise
+  (max z >= 3.8; `skip` is nearest on Fig 7, 0.022).
+- **No rule found fits both** L alone at late times (0.98) **and** L with transfers (0.84)
+  **and** Fig 3's ~885 near-zero agents. I have not found, and cannot derive from the paper,
+  the rule Kato's code used. A fit with enough free knobs would match, but that is curve
+  fitting, not replication, so I have not done it.
+
+Questions whose answers would settle it (for the author, kato.takeshi.3u@kyoto-u.ac.jp, or the
+PLOS peer-review file): (1) what happens in the code when Eq 2 would make the borrower's wealth
+negative; (2) is the Gini computed on raw balances; (3) is total wealth rescaled during runs;
+(4) are Figs 3-7 single runs or averages, and with what seeds; (5) is the J profit/loss
+draw shared by the pair.
+
 ## What the PDF does and does not contain
 
 Asked whether anything in the PDF is out of my sight and blocking a perfect replication: no.

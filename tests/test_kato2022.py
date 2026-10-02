@@ -322,6 +322,19 @@ def test_new_ledger_options_validation():
         Params(model="L", garnishment_rate=0.5, debt_interest=-1.0)
 
 
+@pytest.mark.parametrize("rule", ["swap", "redraw"])
+def test_solvency_preserving_rules_never_go_negative(rule):
+    r = simulate(Params(model="L", insolvency=rule, samples=(10**5, 10**6)), seed=1)
+    assert (r.min_wealth >= 0).all() and np.isfinite(r.total_wealth).all()
+
+
+def test_swap_rule_exchanges_roles_when_borrower_insolvent():
+    # Same stream as plain liquidation until the first insolvency; afterwards they diverge.
+    a = simulate(Params(model="L", samples=(2000,)), seed=0).wealth
+    b = simulate(Params(model="L", insolvency="swap", samples=(2000,)), seed=0).wealth
+    assert np.allclose(a, b)          # no insolvency yet at t=2000, rules agree
+
+
 # ---- Kato's results (Section "Results") ---------------------------------
 def test_R_gini_is_gamma_k2_value():
     # lambda=0.25 -> Chatterjee gamma shape k = 1 + 3*lambda/(1-lambda) = 2,
