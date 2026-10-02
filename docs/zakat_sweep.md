@@ -48,7 +48,7 @@ at 10%. At 2.5% per lunar year:
 | 0.1 | 0.67 | 0.11 | 0.53 | 0.082 | 2.50 | 0.43% |
 | 0.2 | 0.73 | 0.14 | 0.63 | 0.060 | 2.03 | 0.72% |
 
-So with these trade parameters 2.5% is 3.5x (waa=0.2) to 18x (waa=0.02) above the critical
+So with these trade parameters 2.5% is 3.5x (waa=0.2) to 17x (waa=0) above the critical
 rate: no oligarchy, but still a Gini of 0.6-0.7 (the levy does not make the economy equal).
 
 **Scaling** (`critical_scaling.png`). Over 18 (trades per agent-year n_y, stake beta, waa)
