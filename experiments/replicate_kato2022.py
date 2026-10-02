@@ -22,6 +22,7 @@ from islamic_econophysics import kato2022_reference as ref  # noqa: E402
 from islamic_econophysics.kato2022 import Params, simulate  # noqa: E402
 
 T_FINAL = 10**6
+READ_ERR = 0.01   # digitising error allowed on top of single-run scatter
 # label -> model kwargs. "J0.2" etc. match the keys in kato2022_reference.
 EXCHANGE = {
     "R": dict(model="R"),
@@ -46,10 +47,24 @@ def ensemble(pool, kw, seeds):
     return g.mean(0), g.std(0), out
 
 
-def compare(name, sim, target, tol=ref.TOL):
+def _first_bin(args):
+    kw, seed = args
+    w = simulate(Params(**kw), seed=seed).wealth[0]
+    return int((w < 0.1).sum())
+
+
+def compare(name, sim, target, tol=ref.TOL, sd=None):
+    """Two verdicts: `ok` = max |dev| within the fixed band `tol`; `ok_noise` = every point
+    within READ_ERR + 2.5 sd of my ensemble (Kato's points are single runs, so run-to-run
+    scatter of one realisation is the right yardstick, sd = per-run std over my seeds)."""
     dev = np.abs(np.asarray(sim) - np.asarray(target))
-    return dict(series=name, max_dev=float(dev.max()),
-                mean_dev=float(dev.mean()), ok=bool(dev.max() <= tol))
+    row = dict(series=name, max_dev=float(dev.max()), mean_dev=float(dev.mean()),
+               ok=bool(dev.max() <= tol))
+    if sd is not None:
+        sd = np.maximum(np.asarray(sd, dtype=float), 1e-9)
+        z = dev / sd
+        row.update(max_z=float(z.max()), ok_noise=bool((dev <= READ_ERR + 2.5 * sd).all()))
+    return row
 
 
 def main():
@@ -73,8 +88,19 @@ def main():
             m, s, _ = ensemble(pool, dict(kw, samples=ref.FIG4_TIMES), a.seeds)
             fig4[name] = dict(mean=m.tolist(), sd=s.tolist(),
                               total_wealth=ensemble.last_total.tolist())
-            rows.append(compare(f"Fig4 {name}", m, ref.FIG4[name]))
+            rows.append(compare(f"Fig4 {name}", m, ref.FIG4[name], sd=s))
         res["fig4"] = fig4
+
+        # ---- Fig 3 first-bin counts at t=1e6 (ensemble mean vs the single printed run) ----
+        fb = {}
+        for name, target in ref.FIG3_FIRST_BIN_1E6.items():
+            counts = pool.map(_first_bin, [(dict(EXCHANGE[name], samples=(T_FINAL,)), sd)
+                                           for sd in range(a.seeds)])
+            fb[name] = dict(mean=float(np.mean(counts)), sd=float(np.std(counts)), kato=target)
+            rows.append(dict(series=f"Fig3 agents in first bin, {name} (agents)",
+                             max_dev=abs(np.mean(counts) - target), mean_dev=abs(np.mean(counts) - target),
+                             ok=abs(np.mean(counts) - target) <= ref.FIG3_TOL_AGENTS))
+        res["fig3_first_bin"] = fb
 
         # ---- Fig 3: wealth histograms (single run, like the paper) ----
         fig3 = {}
@@ -94,7 +120,7 @@ def main():
                 m, s, _ = ensemble(pool, kw, a.seeds)
                 fig5[f"{key}|{tp}"] = dict(mean=m.tolist(), sd=s.tolist())
                 if (key, tp) in ref.FIG5:
-                    rows.append(compare(f"Fig5 {key} tp={tp:g}", m, ref.FIG5[(key, tp)]))
+                    rows.append(compare(f"Fig5 {key} tp={tp:g}", m, ref.FIG5[(key, tp)], sd=s))
                 elif tp == 10**4:
                     plateau = float(np.mean(m[-3:]))
                     rows.append(dict(series=f"Fig5 {key} tp=1e4 plateau",
@@ -115,7 +141,7 @@ def main():
                     ms.append(float(m[0])); ss.append(float(s[0]))
                 fig6[f"{key}|{tp}"] = dict(mean=ms, sd=ss)
                 if (key, tp) in ref.FIG6:
-                    rows.append(compare(f"Fig6 {key} tp={tp:g}", ms, ref.FIG6[(key, tp)]))
+                    rows.append(compare(f"Fig6 {key} tp={tp:g}", ms, ref.FIG6[(key, tp)], sd=ss))
         res["fig6"] = fig6
 
         # ---- Fig 7: quantile model --------------------------------------
@@ -128,7 +154,7 @@ def main():
                 m, s, _ = ensemble(pool, kw, a.seeds)
                 ms.append(float(m[0])); ss.append(float(s[0]))
             fig7[key] = dict(mean=ms, sd=ss)
-            rows.append(compare(f"Fig7 {key}", ms, ref.FIG7[key]))
+            rows.append(compare(f"Fig7 {key}", ms, ref.FIG7[key], sd=ss))
         res["fig7"] = fig7
 
     res["meta"] = dict(seeds=a.seeds, t_final=T_FINAL, tolerance=ref.TOL,
@@ -138,8 +164,11 @@ def main():
     make_figures(res, out)
     bad = [r["series"] for r in rows if not r["ok"]]
     print(f"{len(rows) - len(bad)}/{len(rows)} series within +/-{ref.TOL}")
-    for b in bad:
-        print("  outside tolerance:", b)
+    noisy = [r for r in rows if "ok_noise" in r]
+    print(f"{sum(r['ok_noise'] for r in noisy)}/{len(noisy)} Gini series consistent with single-run noise")
+    for r in rows:
+        if not r["ok"] or not r.get("ok_noise", True):
+            print("  not matched:", r["series"], f"(max dev {r['max_dev']:.3f}" + (f", max z {r['max_z']:.1f})" if "max_z" in r else ")"))
 
 
 def SHORT_KW(key):
@@ -149,11 +178,16 @@ def SHORT_KW(key):
 def write_comparison(path, rows, seeds, insolvency):
     lines = [f"# Replication vs. digitised Kato (2022) figures ({seeds} seeds/point)\n",
              f"L-model insolvency rule: `{insolvency}`.\n",
-             f"Tolerance +/-{ref.TOL} on the Gini index (figure reading error + Monte-Carlo noise).\n",
-             "| series | max abs dev | mean abs dev | within tol |", "|---|---|---|---|"]
+             f"Two criteria. **Band**: max |sim - Kato| <= {ref.TOL} Gini. **Single-run noise**: Kato's points are "
+             f"single runs, so each point must lie within {READ_ERR} + 2.5 sd of my ensemble, where sd is the "
+             "per-run scatter over seeds; `max z` is the largest |sim - Kato| / sd (z > 3 is not noise).\n",
+             "| series | max abs dev | mean abs dev | within band | max z | consistent with single-run noise |",
+             "|---|---|---|---|---|---|"]
     for r in rows:
+        z = f"{r['max_z']:.1f}" if "max_z" in r else "-"
+        nz = ("yes" if r["ok_noise"] else "**NO**") if "ok_noise" in r else "-"
         lines.append(f"| {r['series']} | {r['max_dev']:.3f} | {r['mean_dev']:.3f} | "
-                     f"{'yes' if r['ok'] else '**NO**'} |")
+                     f"{'yes' if r['ok'] else '**NO**'} | {z} | {nz} |")
     path.write_text("\n".join(lines) + "\n")
 
 

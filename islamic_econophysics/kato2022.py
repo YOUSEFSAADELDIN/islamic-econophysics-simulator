@@ -29,6 +29,7 @@ REDIST_NONE, REDIST_T, REDIST_Q = 0, 1, 2
 _MODEL_CODES = {"R": MODEL_R, "L": MODEL_L, "J": MODEL_J}
 _REDIST_CODES = {None: REDIST_NONE, "T": REDIST_T, "Q": REDIST_Q}
 _INSOLV_CODES = {"none": 0, "floor": 1, "skip": 2, "cap": 3, "bankrupt": 4}
+_ORDER_CODES = {"pro_rata": 0, "fifo": 1, "lifo": 2}
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,17 @@ class Params:
     #                         if the lender itself owes the defaulter). Needs multi_debt.
     #     debt_term T > 0:    a debt is forgiven (lender writes it off) T steps after the most
     #                         recent default on that lender; 0 = never
+    #     repayment_order:    how a debtor's repayment is split over its creditors: "pro_rata"
+    #                         (pari passu), "fifo" (oldest default first = seniority by date) or
+    #                         "lifo" (newest first). Needs multi_debt.
+    #     debt_interest r:    open debts grow by a factor (1+r) per step (compounded lazily when a
+    #                         debt is touched and at every sample). Agents are drawn about every
+    #                         N/2 = 500 steps, so r=1e-4 is roughly 5% per loan event. Without
+    #                         debt_term, unpaid debts of near-zero agents compound without bound.
+    #     receipts_are_income: a creditor that is itself indebted passes on a share g of what it
+    #                         receives in repayments to its own creditors (funding side: lenders
+    #                         meet their obligations out of recoveries), cascading down chains of
+    #                         debt (bounded work per step).
     recovery: float = 1.0
     bankruptcy_cost: float = 0.0
     exclusion_period: int = 0
@@ -80,6 +92,9 @@ class Params:
     multi_debt: bool = False
     seize_receivables: bool = False
     debt_term: int = 0
+    repayment_order: str = "pro_rata"
+    debt_interest: float = 0.0
+    receipts_are_income: bool = False
     # L only: what happens when Eq (2) would push the borrower below zero.
     #   "bankrupt" borrower defaults: reset to 0, lender absorbs the shortfall
     #           (default; total wealth evolves exactly as under Eq 2; Result.defaults counts events)
@@ -105,9 +120,16 @@ class Params:
             raise ValueError("bankruptcy options need model='L' and insolvency='bankrupt'")
         if self.debt_term < 0:
             raise ValueError("debt_term must be >= 0")
-        if (self.multi_debt or self.seize_receivables or self.debt_term) and self.garnishment_rate <= 0:
-            raise ValueError("multi_debt / seize_receivables / debt_term extend the ledger: "
-                             "set garnishment_rate > 0")
+        if self.repayment_order not in _ORDER_CODES:
+            raise ValueError(f"repayment_order must be one of {list(_ORDER_CODES)}")
+        if self.debt_interest < 0:
+            raise ValueError("debt_interest must be >= 0")
+        if (self.multi_debt or self.seize_receivables or self.debt_term or self.debt_interest
+                or self.receipts_are_income or self.repayment_order != "pro_rata") \
+                and self.garnishment_rate <= 0:
+            raise ValueError("ledger extensions need garnishment_rate > 0")
+        if self.repayment_order != "pro_rata" and not self.multi_debt:
+            raise ValueError("repayment_order only matters with multi_debt=True")
         if self.seize_receivables and not self.multi_debt:
             raise ValueError("seize_receivables needs multi_debt=True")
         if self.garnishment_rate > 0 and (self.recovery != 1 or self.bankruptcy_cost != 0):
@@ -166,72 +188,142 @@ def _transfer_Q(m, xi, q):
 
 _EPS = 1e-12
 MATERIAL = 0.01  # a default counts as material if the unpaid part exceeds 1% of initial mean wealth
+_MAX_CASCADE = 32    # pass-through hops processed per income event (bounds work around cycles of debt)
+_DUST = 1e-9         # pass-throughs smaller than this are not queued
+# st[] counters shared by the ledger helpers
+ST_INTEREST, ST_PASSED, ST_TRUNC = 0, 1, 2
 
 
 @njit(cache=True)
-def _expire_row(a, t, term, D, born, dtot):
-    """Forgive agent a's debts older than `term` steps; refresh dtot[a]. Returns amount forgiven."""
-    if term <= 0 or dtot[a] <= _EPS:
+def _refresh_row(a, t, term, rate, D, born, acc, dtot, st):
+    """Bring agent a's debts up to date at step t: forgive those older than `term`, accrue
+    interest on the rest, refresh dtot[a]. Returns the amount forgiven."""
+    if dtot[a] <= _EPS or (term <= 0 and rate <= 0.0):
         return 0.0
     forgiven = 0.0
     remaining = 0.0
     for k in range(D.shape[1]):
         if D[a, k] > 0.0:
-            if t - born[a, k] > term:
+            if term > 0 and t - born[a, k] > term:
                 forgiven += D[a, k]
                 D[a, k] = 0.0
             else:
+                if rate > 0.0 and t > acc[a, k]:
+                    grown = D[a, k] * (1.0 + rate) ** (t - acc[a, k])
+                    st[ST_INTEREST] += grown - D[a, k]
+                    D[a, k] = grown
+                    acc[a, k] = t
                 remaining += D[a, k]
     dtot[a] = remaining
     return forgiven
 
 
 @njit(cache=True)
-def _garnish_agent(a, gain, g, t, term, m, D, born, dtot):
-    """Divert a fraction g of agent a's wealth gain to its creditors, pro rata to what is
-    owed to each. Returns (repaid, forgiven) where forgiven = debts that expired first."""
-    forgiven = _expire_row(a, t, term, D, born, dtot)
+def _garnish_agent(a, gain, g, t, term, rate, order, receipts, m, D, born, acc, dtot, st,
+                   qa, qx, qt):
+    """Divert a fraction g of agent a's wealth gain to its creditors (split by `order`).
+    With `receipts`, creditors that are themselves indebted are queued to pass a share on.
+    Returns (repaid, forgiven, new queue tail)."""
+    forgiven = _refresh_row(a, t, term, rate, D, born, acc, dtot, st)
     if gain <= 0.0 or dtot[a] <= _EPS:
-        return 0.0, forgiven
+        return 0.0, forgiven, qt
     n = D.shape[1]
     tot = 0.0
     for k in range(n):
         tot += D[a, k]
     if tot <= _EPS:
         dtot[a] = 0.0
-        return 0.0, forgiven
-    pay = min(g * gain, tot)
-    frac = pay / tot
-    for k in range(n):
-        if D[a, k] > 0.0:
-            p = D[a, k] * frac
-            D[a, k] -= p
-            m[k] += p
+        return 0.0, forgiven, qt
+    # A debtor never repays more than it holds. (Roundoff in cascades otherwise leaves
+    # holdings at about -1e-15, which a negative lender then compounds at (1-lam)*rho per
+    # loan, growing to O(1) within ~1e3 steps.)
+    pay = min(g * gain, tot, max(m[a], 0.0))
+    if pay <= 0.0:
+        return 0.0, forgiven, qt
+    if order == 0:
+        frac = pay / tot
+        for k in range(n):
+            if D[a, k] > 0.0:
+                p = D[a, k] * frac
+                D[a, k] -= p
+                m[k] += p
+                if receipts and dtot[k] > _EPS and p > _DUST:
+                    if qt < qa.shape[0]:
+                        qa[qt] = k
+                        qx[qt] = p
+                        qt += 1
+                    else:
+                        st[ST_TRUNC] += 1
+    else:
+        remaining = pay
+        while remaining > _EPS:
+            best = -1
+            for k in range(n):
+                if D[a, k] > 0.0:
+                    if best < 0 or (order == 1 and born[a, k] < born[a, best]) \
+                            or (order == 2 and born[a, k] > born[a, best]):
+                        best = k
+            if best < 0:
+                break
+            p = min(D[a, best], remaining)
+            D[a, best] -= p
+            m[best] += p
+            remaining -= p
+            if receipts and dtot[best] > _EPS and p > _DUST:
+                if qt < qa.shape[0]:
+                    qa[qt] = best
+                    qx[qt] = p
+                    qt += 1
+                else:
+                    st[ST_TRUNC] += 1
     m[a] -= pay
     dtot[a] = tot - pay
-    return pay, forgiven
+    return pay, forgiven, qt
 
 
 @njit(cache=True)
-def _garnish_all(m, before, g, t, term, D, born, dtot):
-    """Garnish every indebted agent's gain since `before` (gains measured first, then paid).
-    Returns (repaid, forgiven)."""
-    n = m.shape[0]
-    gains = np.zeros(n)
-    for a in range(n):
-        if m[a] > before[a]:
-            gains[a] = m[a] - before[a]
+def _drain_queue(qa, qx, qt, n_init, m, g, t, term, rate, order, receipts, D, born, acc,
+                 dtot, st):
+    """Process queued (agent, income) entries FIFO. Entries after the first n_init are
+    cascade pass-throughs (a creditor passing on part of what it just received). Work per
+    call is bounded by the queue capacity. Returns (repaid, forgiven)."""
+    head = 0
     repaid = 0.0
     forgiven = 0.0
-    for a in range(n):
-        r, f = _garnish_agent(a, gains[a], g, t, term, m, D, born, dtot)
+    while head < qt and head < qa.shape[0]:
+        if head >= n_init + _MAX_CASCADE:
+            break
+        a = qa[head]
+        x = qx[head]
+        r, f, qt = _garnish_agent(a, x, g, t, term, rate, order, receipts, m, D, born, acc,
+                                  dtot, st, qa, qx, qt)
+        if head >= n_init:
+            st[ST_PASSED] += r
         repaid += r
         forgiven += f
+        head += 1
+    if head < qt:
+        st[ST_TRUNC] += qt - head
     return repaid, forgiven
 
 
 @njit(cache=True)
-def _seize_receivables(i, j, u, t, term, D, born, dtot):
+def _garnish_all(m, before, g, t, term, rate, order, receipts, D, born, acc, dtot, st, qa, qx):
+    """Garnish every indebted agent's gain since `before` (gains measured first, then paid).
+    Returns (repaid, forgiven)."""
+    n = m.shape[0]
+    qt = 0
+    for a in range(n):
+        if m[a] > before[a] and dtot[a] > _EPS:
+            qa[qt] = a
+            qx[qt] = m[a] - before[a]
+            qt += 1
+    return _drain_queue(qa, qx, qt, qt, m, g, t, term, rate, order, receipts, D, born, acc,
+                        dtot, st)
+
+
+@njit(cache=True)
+def _seize_receivables(i, j, u, t, term, rate, D, born, acc, dtot, st):
     """Defaulter i owes lender j an unpaid amount u. j takes over claims owed to i, pro rata,
     up to u (if j itself owes i, that part is set off). Returns (seized, forgiven)."""
     n = D.shape[0]
@@ -244,6 +336,12 @@ def _seize_receivables(i, j, u, t, term, D, born, dtot):
                 dtot[k] -= D[k, i]
                 D[k, i] = 0.0
             else:
+                if rate > 0.0 and t > acc[k, i]:
+                    grown = D[k, i] * (1.0 + rate) ** (t - acc[k, i])
+                    st[ST_INTEREST] += grown - D[k, i]
+                    dtot[k] += grown - D[k, i]
+                    D[k, i] = grown
+                    acc[k, i] = t
                 rtot += D[k, i]
     if rtot <= _EPS or u <= 0.0:
         return 0.0, forgiven
@@ -255,7 +353,13 @@ def _seize_receivables(i, j, u, t, term, D, born, dtot):
             if k == j:
                 dtot[j] -= x                    # set-off: j's debt to i cancels
             else:
+                if rate > 0.0 and D[k, j] > 0.0 and t > acc[k, j]:
+                    grown = D[k, j] * (1.0 + rate) ** (t - acc[k, j])
+                    st[ST_INTEREST] += grown - D[k, j]
+                    dtot[k] += grown - D[k, j]
+                    D[k, j] = grown
                 D[k, j] += x                    # claim assigned from i to j; k's total unchanged
+                acc[k, j] = t
                 born[k, j] = max(born[k, j], born[k, i])
     return f * rtot, forgiven
 
@@ -265,7 +369,7 @@ _MAX_TRIES = 10000  # bounded resampling when many agents are banned
 
 @njit(cache=True)
 def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
-         recovery, cost, excl, lend_excl, garnish, multi, seize, term,
+         recovery, cost, excl, lend_excl, garnish, multi, seize, term, order, rate, receipts,
          sample_times, seed):
     np.random.seed(seed)
     m = np.ones(n)
@@ -276,8 +380,9 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
     snaps = np.empty((n_s, n))
     # per-sample diagnostics: defaults, claims, paid at default, debt outstanding,
     # debt repaid, idle steps (no eligible pair), debt forgiven, receivables seized,
-    # material defaults (unpaid > MATERIAL), share of agents with negative net worth
-    diag = np.zeros((n_s, 10))
+    # material defaults (unpaid > MATERIAL), share of agents with negative net worth,
+    # interest accrued on debts, amount passed on by creditors (cascade), truncated cascade entries
+    diag = np.zeros((n_s, 13))
     n_def = 0
     claim_sum = 0.0
     paid_sum = 0.0
@@ -291,7 +396,12 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
     nd = n if garnish > 0.0 else 1              # ledger matrices only when the ledger is on
     D = np.zeros((nd, nd))                      # D[a, k]: what agent a owes agent k
     born = np.zeros((nd, nd), dtype=np.int64)   # step of the latest default behind D[a, k]
+    acc = np.zeros((nd, nd), dtype=np.int64)    # step up to which interest on D[a, k] is accrued
     dtot = np.zeros(nd)                         # row sums of D (fast "is indebted?" filter)
+    st = np.zeros(3)                            # ledger counters (see ST_*)
+    qcap = 8 * n + 64 if garnish > 0.0 else 2
+    qa = np.zeros(qcap, dtype=np.int64)         # garnishment work queue: agent ...
+    qx = np.zeros(qcap)                         # ... and the income to garnish
     k = 0
     t_end = sample_times[n_s - 1]
     for t in range(1, t_end + 1):
@@ -373,18 +483,28 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
 
             if garnish > 0.0:
                 # Income garnishment for indebted members of the pair (gains measured
-                # before either pays, so repayments received are not themselves garnished).
+                # before either pays, so repayments received are not themselves garnished
+                # unless `receipts` queues them as pass-through income).
                 gi = m[i] - mi
                 gj = m[j] - mj
-                r1, f1 = _garnish_agent(i, gi, garnish, t, term, m, D, born, dtot)
-                r2, f2 = _garnish_agent(j, gj, garnish, t, term, m, D, born, dtot)
-                repaid_sum += r1 + r2
-                forgiven_sum += f1 + f2
+                qt = 0
+                if gi > 0.0 and dtot[i] > _EPS:
+                    qa[qt] = i
+                    qx[qt] = gi
+                    qt += 1
+                if gj > 0.0 and dtot[j] > _EPS:
+                    qa[qt] = j
+                    qx[qt] = gj
+                    qt += 1
+                r1, f1 = _drain_queue(qa, qx, qt, qt, m, garnish, t, term, rate, order,
+                                      receipts, D, born, acc, dtot, st)
+                repaid_sum += r1
+                forgiven_sum += f1
                 if defaulted:
                     u = -new_i                     # unpaid part of the claim
-                    forgiven_sum += _expire_row(i, t, term, D, born, dtot)
+                    forgiven_sum += _refresh_row(i, t, term, rate, D, born, acc, dtot, st)
                     if seize:
-                        sz, fg = _seize_receivables(i, j, u, t, term, D, born, dtot)
+                        sz, fg = _seize_receivables(i, j, u, t, term, rate, D, born, acc, dtot, st)
                         u -= sz
                         seized_sum += sz
                         forgiven_sum += fg
@@ -393,6 +513,7 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
                     if u > _EPS and (multi or dtot[i] <= _EPS):
                         D[i, j] += u
                         born[i, j] = t
+                        acc[i, j] = t
                         dtot[i] += u
 
         # Record *before* any transfer due at this t: Fig 5's curves meet the
@@ -405,9 +526,9 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
             diag[k, 0] = n_def
             diag[k, 1] = claim_sum
             diag[k, 2] = paid_sum
-            if garnish > 0.0 and term > 0:
-                for a in range(n):               # make "outstanding" exclude expired debts
-                    forgiven_sum += _expire_row(a, t, term, D, born, dtot)
+            if garnish > 0.0 and (term > 0 or rate > 0.0):
+                for a in range(n):               # bring every debt up to date (expiry, interest)
+                    forgiven_sum += _refresh_row(a, t, term, rate, D, born, acc, dtot, st)
             diag[k, 3] = D.sum() if garnish > 0.0 else 0.0
             diag[k, 4] = repaid_sum
             diag[k, 5] = idle
@@ -424,6 +545,9 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
                     if m[a] + recv - D[a].sum() < 0.0:
                         neg += 1
                 diag[k, 9] = neg / n
+            diag[k, 10] = st[ST_INTEREST]
+            diag[k, 11] = st[ST_PASSED]
+            diag[k, 12] = st[ST_TRUNC]
             snaps[k, :] = m
             k += 1
         if redist != 0 and t % tp == 0:
@@ -434,7 +558,8 @@ def _run(model, redist, n, lam, rho, dw, xi, tp, q, shared_delta, insolv,
             else:
                 _transfer_Q(m, xi, q)
             if garnish > 0.0:
-                r_t, f_t = _garnish_all(m, before_t, garnish, t, term, D, born, dtot)
+                r_t, f_t = _garnish_all(m, before_t, garnish, t, term, rate, order, receipts,
+                                        D, born, acc, dtot, st, qa, qx)
                 repaid_sum += r_t
                 forgiven_sum += f_t
     return ginis, totals, minima, snaps, diag
@@ -456,6 +581,9 @@ class Result:
     claims_seized: np.ndarray  # cumulative receivables taken over / set off at defaults
     material_defaults: np.ndarray  # defaults with unpaid part > MATERIAL (`defaults` also counts trivial ones between near-zero agents)
     neg_net_worth_share: np.ndarray  # share of agents whose holdings + receivables - debts < 0 (ledger only)
+    interest_accrued: np.ndarray  # cumulative interest added to open debts (debt_interest > 0)
+    passed_on: np.ndarray      # cumulative repayments creditors passed to their own creditors (receipts_are_income)
+    cascade_truncated: np.ndarray  # cascade entries dropped by the per-event work bound
 
 
 def simulate(p: Params, seed: int = 0) -> Result:
@@ -468,10 +596,12 @@ def simulate(p: Params, seed: int = 0) -> Result:
         p.savings, p.interest, p.delta_width, p.transfer_rate,
         p.transfer_period, p.quantile, p.shared_delta, _INSOLV_CODES[p.insolvency],
         p.recovery, p.bankruptcy_cost, p.exclusion_period, p.lender_exclusion_period,
-        p.garnishment_rate, p.multi_debt, p.seize_receivables, p.debt_term, times, seed)
-    defaults, claims, paid, debt_out, repaid, idle, forgiven, seized, material, negnet = diag.T
+        p.garnishment_rate, p.multi_debt, p.seize_receivables, p.debt_term,
+        _ORDER_CODES[p.repayment_order], p.debt_interest, p.receipts_are_income, times, seed)
+    (defaults, claims, paid, debt_out, repaid, idle, forgiven, seized, material, negnet,
+     interest, passed, trunc) = diag.T
     with np.errstate(invalid="ignore", divide="ignore"):
         rec = np.where(claims > 0, (paid + repaid) / claims, np.nan)
     return Result(times, g, tot, mn, snaps, defaults.astype(np.int64), rec,
                   debt_out, repaid, idle.astype(np.int64), forgiven, seized,
-                  material.astype(np.int64), negnet)
+                  material.astype(np.int64), negnet, interest, passed, trunc)

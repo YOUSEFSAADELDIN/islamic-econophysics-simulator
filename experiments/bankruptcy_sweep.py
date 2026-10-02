@@ -34,6 +34,16 @@ GRID = {
     "ledger multi term=1e3 g=1": dict(garnishment_rate=1.0, multi_debt=True, debt_term=10**3),
     "ledger multi+seize+term=1e4 g=1": dict(garnishment_rate=1.0, multi_debt=True,
                                             seize_receivables=True, debt_term=10**4),
+    # priority, interest on debts, funding side (receipts passed on down the chain of debt)
+    "ledger multi fifo g=1": dict(garnishment_rate=1.0, multi_debt=True, repayment_order="fifo"),
+    "ledger multi lifo g=1": dict(garnishment_rate=1.0, multi_debt=True, repayment_order="lifo"),
+    "ledger multi term=1e4 interest=1e-4 g=1": dict(garnishment_rate=1.0, multi_debt=True,
+                                                    debt_term=10**4, debt_interest=1e-4),
+    "ledger multi interest=1e-5 g=1": dict(garnishment_rate=1.0, multi_debt=True, debt_interest=1e-5),
+    "ledger multi receipts g=1": dict(garnishment_rate=1.0, multi_debt=True, receipts_are_income=True),
+    "ledger multi+seize+receipts+term=1e4 g=1": dict(garnishment_rate=1.0, multi_debt=True,
+                                                     seize_receivables=True, receipts_are_income=True,
+                                                     debt_term=10**4),
 }
 
 
@@ -42,12 +52,12 @@ def run(args):
     r = simulate(Params(**kw), seed=seed)
     return (r.gini, r.total_wealth, r.defaults, r.recovery_rate,
             r.debt_outstanding, r.debt_repaid, r.material_defaults, r.neg_net_worth_share,
-            r.debt_forgiven, r.claims_seized)
+            r.debt_forgiven, r.claims_seized, r.interest_accrued, r.passed_on, r.cascade_truncated)
 
 
 def mean_over_seeds(pool, kw, seeds):
     out = pool.map(run, [(kw, s) for s in range(seeds)])
-    return [np.nanmean([o[i] for o in out], axis=0) for i in range(10)]
+    return [np.nanmean([o[i] for o in out], axis=0) for i in range(13)]
 
 
 def evaluate(pool, opts, seeds):
@@ -55,7 +65,7 @@ def evaluate(pool, opts, seeds):
     devs, row = [], {}
     # Fig 4, L rho=0.05 and rho=0 (exchange only)
     for rho, key in ((0.05, "L rho=0.05"), (0.0, "L rho=0")):
-        g, tot, dfl, rec, dout, drep, mat, neg, forg, seiz = mean_over_seeds(
+        g, tot, dfl, rec, dout, drep, mat, neg, forg, seiz, intr, pas, trn = mean_over_seeds(
             pool, dict(base, interest=rho, samples=ref.FIG4_TIMES), seeds)
         devs.append(np.abs(g - ref.FIG4[key]))
         row[f"fig4 {key}"] = g.tolist()
@@ -65,7 +75,9 @@ def evaluate(pool, opts, seeds):
                        debt_outstanding_per_agent_1e6=float(dout[-1] / 1000),
                        debt_repaid_1e6=float(drep[-1]),
                        material_defaults_1e6=float(mat[-1]), neg_net_share_1e6=float(neg[-1]),
-                       debt_forgiven_1e6=float(forg[-1]), claims_seized_1e6=float(seiz[-1]))
+                       debt_forgiven_1e6=float(forg[-1]), claims_seized_1e6=float(seiz[-1]),
+                       interest_accrued_1e6=float(intr[-1]), passed_on_1e6=float(pas[-1]),
+                       cascade_truncated_1e6=float(trn[-1]))
     # Fig 5, L-T at tp=1e5
     g = mean_over_seeds(pool, dict(base, redistribution="T", transfer_rate=0.5,
                                    transfer_period=10**5, samples=ref.FIG4_TIMES), seeds)[0]
@@ -91,26 +103,32 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=N_SEEDS)
     ap.add_argument("--out", default="results/bankruptcy_sweep")
+    ap.add_argument("--force", action="store_true", help="recompute settings already in sweep.json")
     a = ap.parse_args()
     Path(a.out).mkdir(parents=True, exist_ok=True)
-    res = {}
+    path = Path(a.out, "sweep.json")
+    # resumable: settings already computed with the same seed count are kept
+    res = json.loads(path.read_text()) if path.exists() and not a.force else {}
     with Pool() as pool:
         for name, opts in GRID.items():
+            if name in res and "interest_accrued_1e6" in res[name]:
+                continue
             res[name] = evaluate(pool, opts, a.seeds)
-            print(f"{name:32s} mean dev {res[name]['mean_dev']:.3f}  max {res[name]['max_dev']:.3f}", flush=True)
-    Path(a.out, "sweep.json").write_text(json.dumps(res))
+            path.write_text(json.dumps(res))          # save after every setting
+            print(f"{name:42s} mean dev {res[name]['mean_dev']:.3f}  max {res[name]['max_dev']:.3f}", flush=True)
     lines = [f"# Bankruptcy options vs Kato's L figures ({a.seeds} seeds)\n",
              "Deviation = |sim - Kato| over the 7+7+7+7+7+10 = 45 digitised L points "
              "(Fig 4 rho=.05/0, Fig 5 tp=1e5, Fig 6 tp=1e4/1e5, Fig 7).\n",
-             "| setting | mean dev | max dev | L alone t=1e6 (rho=.05) | L rho=0 t=1e6 | L-T tp=1e5 t=1e6 | defaults (all / material, 1e6) | wealth/agent | realised recovery | open debt/agent | repaid | forgiven | seized | agents with net worth < 0 |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| setting | mean dev | max dev | L alone t=1e6 (rho=.05) | L rho=0 t=1e6 | L-T tp=1e5 t=1e6 | defaults (all / material, 1e6) | wealth/agent | realised recovery | open debt/agent | repaid | forgiven | seized | agents with net worth < 0 | interest accrued | passed on |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for n, r in res.items():
         rec = "-" if r["recovery_rate"] is None else f"{r['recovery_rate']:.2f}"
         lines.append(f"| {n} | {r['mean_dev']:.3f} | {r['max_dev']:.3f} | {r['fig4 L rho=0.05'][-1]:.2f} | "
                      f"{r['fig4 L rho=0'][-1]:.2f} | {r['fig5 L-T tp=1e5'][-1]:.2f} | "
                      f"{r['defaults_1e6']:.0f} / {r['material_defaults_1e6']:.0f} | {r['total_per_agent_1e6']:.2f} | {rec} | "
                      f"{r['debt_outstanding_per_agent_1e6']:.2f} | {r['debt_repaid_1e6']:.0f} | "
-                     f"{r['debt_forgiven_1e6']:.0f} | {r['claims_seized_1e6']:.0f} | {r['neg_net_share_1e6']:.2f} |")
+                     f"{r['debt_forgiven_1e6']:.0f} | {r['claims_seized_1e6']:.0f} | {r['neg_net_share_1e6']:.2f} | "
+                     f"{r['interest_accrued_1e6']:.3g} | {r['passed_on_1e6']:.0f} |")
     Path(a.out, "sweep.md").write_text("\n".join(lines) + "\n")
 
 

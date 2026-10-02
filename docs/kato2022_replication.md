@@ -5,10 +5,13 @@ Code: `islamic_econophysics/kato2022.py` (engine), `experiments/replicate_kato20
 `results.json`, `comparison.md`). Run with `python experiments/replicate_kato2022.py`
 (~25 s, 4 cores) and `pytest tests`.
 
-The paper releases no code or tables, so "reproduces" means "within +/-0.05 Gini of
-values read off the printed figures" (`islamic_econophysics/kato2022_reference.py`).
-The tolerance covers eyeballing error plus Monte-Carlo noise; Kato shows one run per
-point, this repo averages 20.
+The paper releases no code or tables, so "reproduces" is judged against values taken from the
+printed figures (`islamic_econophysics/kato2022_reference.py`; extracted from the PDF's
+305 dpi embedded images by `experiments/digitize_kato_figures.py`, see "What the PDF does and
+does not contain"). Kato shows **one run per point**; this repo averages 20 seeds, so every
+Gini comparison is made two ways (`results/kato2022/comparison.md`): a fixed +/-0.05 band, and
+"within 0.01 + 2.5 sd of my per-run scatter", which is the right yardstick for a single
+realisation.
 
 ## Equations as implemented (checked against the PDF, not the HTML)
 
@@ -58,8 +61,10 @@ says; that is what makes a rich lender ruin a poor borrower (see below).
 
 ## Results
 
-14 of 22 compared series are within +/-0.05 with `bankrupt` (15 with `skip`; see
-`results/kato2022*/comparison.md`). All the J, R and T-redistribution-of-J/R series pass.
+With plain liquidation (default): 17 of 25 compared series are within +/-0.05, and 11 of the
+18 Gini series are consistent with single-run noise (`max z` <= ~2.5). Everything that
+matches is J, R or a redistribution of J/R, plus L at t <= 1e5. What is *not* consistent with
+noise is the L model (z = 12-57) and one point of one J-Q curve (z = 3.0).
 
 - **R:** Gini 0.37-0.38. This is not just "about 0.4": for lam=0.25 the stationary law
   is Gamma with shape 1+3lam/(1-lam)=2, whose Gini is exactly 3/8 = 0.375. (That is also
@@ -75,10 +80,11 @@ says; that is what makes a rich lender ruin a poor borrower (see below).
 - **L-T:** the tp=1e4 plateau matches (0.32 vs 0.31). At tp=1e5 `bankrupt` gives 0.91 at
   t=1e6 vs Kato's 0.84 (`skip`: 0.86), and the xi-dependence is too flat (Fig 6/7: dev up to
   0.17 at xi=0.125, 0.08 in Fig 7).
-- **Q:** same qualitative picture as Fig 7 (J-Q with dw=0.1 reaches the J-T level at
-  q=5-7), but two features differ: mine does not turn up at q=10 (0.40 vs Kato's 0.47)
-  and J-Q dw=0.2 falls monotonically (0.75 at q=10) where Kato's has a shallow minimum
-  at q~6-7. Max deviation 0.06-0.07.
+- **Q:** J-Q matches Fig 7 within single-run noise: every point of both J curves is within
+  1.5 sd of my ensemble except one, J dw=0.1 at q=10 (Kato 0.471, mine 0.40 +/- 0.02, z=3.0).
+  An earlier version of these notes called the U-shapes at large q a mismatch; with the
+  digitised values and per-run scatter they are not, apart from that one point. The
+  fixed +/-0.05 band would flag J dw=0.2 (0.056) although its max z is only 1.5.
 
 ### Not reproduced
 
@@ -89,15 +95,20 @@ says; that is what makes a rich lender ruin a poor borrower (see below).
   something he did not describe. Up to t=1e5 it matches (0.27, 0.45 vs 0.49).
 - **L-T / L-Q shapes** under `bankrupt` (above), and the L Gini at xi=0 / q=1 reads 0.94
   rather than 0.98.
-- Fig 3's L panel: Kato shows ~900 of 1000 agents near 0 at t=1e6. Under `bankrupt` the
-  distribution is concentrated similarly (Gini 0.94) but I have not compared the
-  histogram quantitatively.
+- **Fig 3's L panel, t=1e6** (a quantitative target I had not used): Kato has ~885 of 1000
+  agents in the first 0.1-wide wealth bin and almost none in the next; J matches (dw=0.1: 408
+  vs ~390; dw=0.2: 906 vs ~910) but plain-liquidation L has 741 (and a tail of 48, 29, 20 in
+  the next bins). Raw wealth is plotted, so this also pins the level of total wealth:
+  Kato's t=1e3/1e4 panels centre on m=1, i.e. the L model's wealth does not blow up or
+  collapse. Options that land nearer: single-debt ledger g=1 (866), exclusion 1e4 (912),
+  multi-debt ledger g=1 (936), multi g=0.5 (827). Bankruptcy cost drives all 1000 below 0.1
+  (wealth -> 0). None of them also gets L-T right (Fig 5: 0.84).
 
 ## Bankruptcy options (beyond Kato; L model, `insolvency="bankrupt"`)
 
 At a default the borrower's assets are `X = lam m_i + (1-lam)(1+d)(m_i+m_j)` and the
 lender's claim is `C = (1-lam)(1+rho) m_j > X`. Plain liquidation (the default) gives
-the lender all of `X`, which reproduces Eq 2's total exactly. Eight optional knobs, all off
+the lender all of `X`, which reproduces Eq 2's total exactly. Eleven optional knobs, all off
 by default (`Params`, off = previous results to 4e-14):
 
 | option | mechanism | wealth |
@@ -108,14 +119,17 @@ by default (`Params`, off = previous results to 4e-14):
 | `lender_exclusion_period=E` | defaulter also cannot *lend* for `E` steps | conserved |
 | `garnishment_rate=g` | **debt ledger**: lender seizes the borrower's assets as before, and the unpaid part `U` becomes a debt of the borrower to that lender. Whenever the debtor's wealth rises (profit as borrower, interest as lender, transfers received) a fraction `g` of the *gain* goes to the creditor until `U` is repaid. One open debt per borrower; a later lender of an already-indebted borrower just absorbs its loss. Holdings stay >= 0 and the Gini is on holdings, as in the paper. `g=1` is the nearest analogue of literal Eq 2, where `U` stays as negative wealth. Cannot be combined with `recovery`/`bankruptcy_cost`. | conserved (transfers only) |
 
-Ledger extensions (all need `garnishment_rate > 0`, all off by default; the single-debt
-ledger of the previous version reproduces to roundoff, 1.6e-14):
+Ledger extensions (all need `garnishment_rate > 0`, all off by default; each version reproduces
+the previous one to roundoff, ~1e-14):
 
 | option | mechanism |
 |---|---|
 | `multi_debt=True` | debts are an N x N matrix: a borrower can owe several lenders at once, every default adds to what is owed to that lender, and a repayment is split pro rata over the creditors. (Single mode: a borrower with an open debt cannot take a second; the later lender just absorbs the loss.) |
 | `seize_receivables=True` | the defaulter's estate includes the claims others owe it. Its lender takes those claims over pro rata up to the unpaid amount `U`; if the lender itself owes the defaulter, that part is set off. This is how a creditor becomes exposed to its debtor's other debtors. (Lenders in this model cannot go negative on their own, so this is the available form of "creditors who go bust in turn".) Needs `multi_debt`. |
 | `debt_term=T` | a debt is forgiven (the lender writes it off) `T` steps after the most recent default on that lender, enforced whenever a debt is touched and at every sample. Clocks are per (debtor, lender) pair, so a repeat default restarts the clock. 0 = never. |
+| `repayment_order` | how a debtor's repayment is split over its creditors: `pro_rata` (pari passu, default), `fifo` (oldest default first, i.e. seniority by date) or `lifo` (newest first). Needs `multi_debt`. |
+| `debt_interest=r` | open debts grow by `(1+r)` per step, compounded lazily when touched and at every sample. Agents are drawn about every N/2 = 500 steps, so `r=1e-4` is roughly 5% per loan event. Without `debt_term` the debts of near-zero agents compound without bound. |
+| `receipts_are_income=True` | **funding side**: a creditor that is itself indebted passes a share `g` of each repayment it receives on to its own creditors, cascading down chains of debt (at most 32 hops per income event; the remainder is counted in `cascade_truncated`). |
 
 Diagnostics on `Result`: `recovery_rate` (lender receipts at default plus later repayments /
 claims; 0.93 under plain liquidation), `debt_outstanding`, `debt_repaid`, `debt_forgiven`,
@@ -143,6 +157,11 @@ agents (e.g. 2.4e5 raw vs 1.1e5 material under plain liquidation).
 | ledger multi g=1 | 0.98 | 0.97 | 6.4e4 | debt 29 per agent; 90% net-negative |
 | ledger multi+seize g=1 | 0.98 | 0.96 | 7.3e4 | |
 | ledger multi, term 1e4 / 1e3 | 0.95 / 0.94 | 0.93 / 0.92 | 1.0e5 / 1.1e5 | debt 0.28 / 0.03 per agent |
+| ledger multi, fifo / lifo | 0.97 / 0.97 | 0.96 / 0.95 | 7.7e4 / 6.6e4 | pro rata: 0.98 / 0.97 / 6.4e4 |
+| ledger multi, interest 1e-5 (no term) | 0.97 | 0.96 | 7.1e4 | open debt 4.1e4 per agent |
+| ledger multi, term 1e4 + interest 1e-4 | 0.95 | 0.93 | 1.0e5 | debt 0.50 per agent; 6.6e4 forgiven |
+| ledger multi + receipts (funding side) | 0.98 | 0.97 | 6.1e4 | 307 passed on of 4037 repaid |
+| multi + seize + receipts + term 1e4 | 0.95 | 0.93 | 1.0e5 | no chains left to cascade |
 
 What this shows:
 
@@ -188,14 +207,29 @@ What this shows:
   to 0.95 / 0.94. About 95% of all debt ever created is forgiven rather than repaid
   (term 1e4: 2.9e4 forgiven vs 1.4e3 repaid), so in this model "repayment from future
   income" is mostly a fiction and the discharge rule does the work.
+- **Creditor priority makes no visible difference to inequality** (fifo 0.97, lifo 0.97,
+  pro rata 0.98 for L alone) and only shifts how many defaults are material (7.7e4, 6.6e4,
+  6.4e4). Repayments are small relative to debts, so who is paid first rarely matters.
+- **Interest on debts only compounds the overhang.** At 1e-5 per step (no term) open debt
+  reaches 4.1e4 per agent, about 47 000 times the wealth in the system, with the holdings Gini
+  unchanged at 0.97; with a 1e4-step term the same idea is bounded (0.5 per agent) and 6.6e4 of
+  debt is forgiven, versus 2.9e4 without interest. Interest on the debts of people with no
+  income is a bookkeeping fiction in this model: it raises claims, never recoveries.
+- **The funding side (receipts passed down the chain) barely fires.** Only 307 of 4037 units
+  repaid (7.6%) were passed on, because few creditors are themselves in debt to anyone who is
+  still owed; once debts expire (term 1e4) it is 0. Gini is unchanged (0.98). (A bug found
+  while building this: float roundoff in cascades left holdings at about -1e-15, which a
+  negative *lender* compounds at (1-lam)*rho per loan, reaching -700 by t=3e5. Repayments are
+  now capped at current holdings; the old configurations are unchanged to 1e-14 relative.)
 - **Net:** none of the options improves the overall fit to Kato (best mean deviation:
   bankruptcy cost 0.1-0.25, 0.048 vs 0.056, within noise; term 1e3 ties baseline at
   0.057). They are policy levers for the Islamic-finance extensions, not repairs to the
   replication.
 
-Still not built: lenders who must meet their own obligations out of recoveries (a funding
-side for credit), priority among creditors (all debts are pari passu), and debt that
-accrues interest.
+Still not built: a credit-supply side (lenders deciding whether to lend given their own
+balance sheet, which is what a haircut or discharge regime would really test), secured or
+subordinated debt classes other than by date, and debtors' income from anything other than
+the model's own exchanges and transfers.
 
 ## Corrections to the literature dossier (`overview.md`, which is a PDF despite the extension)
 
@@ -208,8 +242,34 @@ accrues interest.
   "R, L and T" where "R, L and J" is meant. In Fig 4 the legend leader lines for
   "L: rho=0" and "J: dw=0.2" cross (checked at 300 dpi).
 
+## What the PDF does and does not contain
+
+Asked whether anything in the PDF is out of my sight and blocking a perfect replication: no.
+
+- **Text and equations.** All of it read; Eqs 1-4 and Fig 1C/D checked visually on the rendered
+  pages (pdftotext drops minus signs, so the text layer alone is not enough). The upload is
+  byte-identical to `journal.pone.0275113.pdf` in the repo and to arXiv 2206.05443v2.
+- **Figures.** They are raster images (305 dpi) embedded in the PDF. I first read values off a
+  110 dpi render by eye; I have since extracted the images and digitised every legible
+  marker programmatically (y axis calibrated on the tick labels, ~0.002 Gini/pixel). The
+  by-eye readings were within 0.010 of the digitised ones (mean 0.004), so reading was not the
+  limit. Markers hidden behind other markers (e.g. L at rho=0.05 for t<=1e4 and at 1e6, L-Q at
+  q=1) and hollow markers (the tp=1e4 series) cannot be recovered exactly and stay by eye.
+- **Run-to-run scatter is visible in the paper itself:** in Fig 6 the xi=0 point of J dw=0.1
+  is ~0.83 in the tp=1e5 series and ~0.80 in the tp=1e4 series although the configurations
+  are identical (no transfer happens at xi=0). That ~0.03 is Kato's single-run noise; no
+  replication can pin his curves tighter than that.
+- **arXiv v1 (June 2022, pre-review, 35 pp)** read: same equations, same parameters, nothing
+  on how negative wealth, seeds or averaging were handled. (v1's Fig 4 caption says lam=0.25,
+  the published figure's inset says 0.5; the curves match 0.25.)
+- **Not in the PDF at all:** code, random seeds, number of runs, the treatment of a borrower
+  whose Eq 2 balance goes negative, whether J uses one delta per pair, and when exactly Gini
+  is read relative to a transfer. These, not missing pixels, are what stop a perfect
+  replication. The PLOS peer-review history and author responses are published with the
+  article and might settle some of them; I have not been able to read them yet.
+
 ## Suggested next steps
 
-1. Bankruptcy options and the extended ledger are in (see above); creditor priority, interest on
-   debts and a lender funding side are the open extensions.
+1. Bankruptcy options, the extended ledger, priority, debt interest and the funding cascade are
+   all in (see above); a credit-supply side is the open extension.
 2. Then move to the dossier's Phase 1b: the zakat-rate sweep with a WAA term.
