@@ -37,7 +37,7 @@ t = 10^6 for ρ = 0.05 (you: 0.98) and 0.50-0.58 for ρ = 0 (you: 0.951), and Fi
 741 of 1000 agents below 0.1 (you: about 885). Two clues, in case they ring a bell:
 
 - Your ρ = 0 curve keeps rising smoothly (0.756 at 3x10^5, 0.951 at 10^6), like a
-  multiplicative random walk: a log-normal spread with σ² around 7.5 would give 0.948. Under
+  multiplicative random walk: a log-normal spread with σ² around 7.5 would give 0.947. Under
   Eq 2 with any non-negativity rule the shock to a poor borrower scales with the lender's
   wealth, which pins the Gini near 0.55 instead.
 - Swapping the roles when the borrower would go negative (or redrawing δ) matches your L-T

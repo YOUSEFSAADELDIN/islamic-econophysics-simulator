@@ -144,7 +144,7 @@ What it taught:
 - **Eq 2 is right** at least up to the point where balances would turn negative: the literal
   rho=0 run tracks Kato's curve to t=1e5 (0.27, 0.51 vs 0.276, 0.493).
 - **Kato's late rho=0 growth looks multiplicative, not additive.** A log-normal spread with
-  sigma^2 ~ 7.5 gives Gini 0.948 at t=1e6 (Kato 0.951). In Eq 2 a poor borrower facing a rich
+  sigma^2 ~ 7.5 gives Gini 0.947 at t=1e6 (Kato 0.951). In Eq 2 a poor borrower facing a rich
   lender takes a shock proportional to the *lender's* wealth, which any non-negativity rule
   turns into mean reversion at zero, capping the Gini near 0.55. A shock proportional to the
   borrower's own wealth reproduces the rho=0 curve but not the rest.
