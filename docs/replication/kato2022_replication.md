@@ -186,8 +186,18 @@ Asked whether anything in the PDF is out of my sight and blocking a perfect repl
 - **Not in the PDF at all:** code, random seeds, number of runs, the treatment of a borrower
   whose Eq 2 balance goes negative, whether J uses one delta per pair, and when exactly Gini
   is read relative to a transfer. These, not missing pixels, are what stop a perfect
-  replication. The PLOS peer-review history and author responses are published with the
-  article and might settle some of them; I have not been able to read them yet.
+  replication.
+- **The PLOS peer-review history** (editor, two reviewers, the author's response letter; accepted
+  within weeks, September 2022) has been read. It does not settle any of the open points. What
+  it does contain: Reviewer 2 asked how the system is kept from exploding when the models are
+  not conservative, and Kato answered by adding the remark that the L and J models are
+  non-conservative and that this does not affect the Gini (and a note on how to run with
+  constant total wealth), so the published runs apparently left total wealth free to drift,
+  with no rescaling. Nothing was asked or said about negative balances, seeds, the number of
+  runs or code, and both reviewers marked the data as fully available. Reviewer 1 pointed
+  out that zakat is obligatory and fundamental; Kato replied that he takes up mudaraba and
+  waqf among the Shariah-compliant contracts and redistribution mechanisms, i.e. zakat is
+  deliberately outside the model.
 
 ## Suggested next steps
 

@@ -46,18 +46,21 @@ t = 10^6 for ρ = 0.05 (you: 0.98) and 0.50-0.58 for ρ = 0 (you: 0.951), and Fi
 
 A debt-ledger variant (the unpaid balance stays owed and is taken from the debtor's later
 gains) reaches 0.98 and 0.75 for L alone but then gives 0.97 for L-T at tp = 10^5, where you
-have 0.84. I could not find a rule that fits all of Figs 3-7 for L together.
+have 0.84. I could not find a rule that fits all of Figs 3-7 for L together. I also read the
+published peer review history, which discusses the non-conservation of wealth but not
+negative balances, the number of runs or the code.
 
 **Questions**
 
-The ones that decide whether I can finish the replication are 1-5 and 11; 6 and 7 are
-small clarifications; 8-10 go beyond the paper and are optional.
+The ones that decide whether I can finish the replication are 1, 4, 5 and 11; 2, 3, 6 and 7
+are confirmations; 8-10 go beyond the paper and are optional.
 
 1. *L model, insolvency.* When Eq 2 would give the borrower a negative wealth, what does the
    code do (allow it, floor at zero, reject, something else)? Is the Gini (Eq 7) computed on
    the raw balances?
-2. *Rescaling.* Is total wealth rescaled during the L and J runs (you mention it as an option
-   in the Results)? If so, how and how often?
+2. *Rescaling.* In your reply to Reviewer 2 you say the Gini results are unaffected when the
+   total wealth of the L and J models varies. I take it that no rescaling was applied in
+   Figs 3-7 and the total was left free to drift. Is that right?
 3. *J model.* Is the profit/loss rate δ in Eq 3 one draw shared by the pair i, j, or one draw
    per agent?
 4. *Runs.* Are the points in Figs 3-7 single runs or averages, and with how many seeds? (In
@@ -70,11 +73,11 @@ small clarifications; 8-10 go beyond the paper and are optional.
    quantile), and is "1/1 quantile equals the R, L and T models" meant to read "R, L and J"?
 7. *Small inconsistencies.* The inset of Fig 4 says λ = 0.5 (your curves and caption fit
    0.25); the caption of Fig 3 says t = 10^3, 10^4, 10^5 but the panels are labelled 10^6.
-8. *Zakat.* Your abstract names waqf, sadaqah and zakat as the Islamic redistribution, but the
-   models are T (which you equate with inheritance tax and waqf) and Q. Do you regard T/Q as
-   representing zakat (2.5% per lunar year of wealth above a nisab, paid to the poor, the
-   needy and the other classes of Qur'an 9:60), or was zakat deliberately left outside the
-   model? Is there a zakat-specific model, or are there data you would use for it?
+8. *Zakat.* In your reply to Reviewer 1 you say you take up mudaraba and waqf among the
+   Shariah-compliant contracts and redistribution mechanisms, so I understand zakat was
+   deliberately left outside the model and T stands for waqf. Is that right? Do you see T/Q
+   extending to zakat (2.5% per lunar year of wealth above a nisab, paid to the poor, the
+   needy and the other classes of Qur'an 9:60), or are there data you would use for it?
 9. *Time unit.* What does one time step stand for? You equate t = 10^4-10^5 with a millennium
    (your note: 12 months—365 days × 1000 years), which suggests a step is roughly a month or a day.
    With that mapping, which (xi, tp) would you use for an annual 2.5% levy?

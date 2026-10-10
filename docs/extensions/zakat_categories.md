@@ -14,8 +14,10 @@ Run: `python experiments/extensions/zakat_categories.py` (~10 min, 4 cores).
   as the Islamic redistribution, but the only redistribution in his model is T (every `tp` steps
   each agent gives `xi * m_i`, split equally among all others; he equates it with inheritance tax
   and waqf) and Q (the same, paid only to agents below `m_max/q`). There is no 2.5%, no nisab and no
-  recipient categories in the paper, and he never mentions slaves, debtors or travellers. So
-  there is **nothing in the paper to replicate** for zakat, and none of this can be checked
+  recipient categories in the paper, and he never mentions slaves, debtors or travellers. His
+  response to the reviewers confirms it was a choice: when Reviewer 1 stressed that zakat is
+  obligatory and fundamental, he replied that he takes up mudaraba and waqf among the
+  mechanisms listed. So there is **nothing in the paper to replicate** for zakat, and none of this can be checked
   against his figures.
 - **Where the zakat rules come from:** the dossier (2.5% on wealth held a full lunar year above the
   nisab; the eight recipients of Q 9:60). These are facts about the rule, not results of any
